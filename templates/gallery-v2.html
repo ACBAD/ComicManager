@@ -48,7 +48,7 @@
     const images = [
             {% for image in images %}"{{ image }}",{% endfor %}
         ];
-        document.getElementById('total').textContent = images.length.toString();
+
         let currentIndex = 0;
     function updateImage() {
         const imgElement = document.getElementById("displayedImage");
@@ -82,4 +82,7 @@
         </div>
     </div>
 </body>
+<script>
+    document.getElementById('total').textContent = images.length.toString();
+</script>
 </html>
