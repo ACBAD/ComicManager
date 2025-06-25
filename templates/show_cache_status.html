@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="refresh" content="1">
+    <title>缓存拉取进度</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 30px;
+        }
+
+        .progress-block {
+            margin-bottom: 40px;
+        }
+
+        .bar-name {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .progress-bar-container {
+            display: flex;
+            align-items: center;
+        }
+
+        .bar-wrapper {
+            flex: 1;
+            background-color: #ffffff;
+            border: 3px solid black;
+            border-radius: 20px;
+            height: 20px;
+            overflow: hidden;
+            margin-right: 15px;
+        }
+
+        .bar-fill {
+            background-color: #3f3fff;
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+
+        .bar-label {
+            width: 60px;
+            text-align: right;
+        }
+
+        h2 {
+            margin-bottom: 40px;
+        }
+    </style>
+</head>
+<body>
+    <h2>show_status</h2>
+    {% for item in status_list %}
+    <div class="progress-block">
+        <div class="bar-name">name: {{ item.name }}</div>
+        <div class="progress-bar-container">
+            <div class="bar-wrapper">
+                <div class="bar-fill" style="width: {{ item.percent }}%;"></div>
+            </div>
+            <div class="bar-label">{{ item.percent }}%</div>
+        </div>
+    </div>
+    {% endfor %}
+</body>
+</html>
