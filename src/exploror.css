@@ -1,0 +1,130 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f0f0f0;
+}
+
+.list-class {
+    width: 95%;
+    margin: 20px auto;
+}
+
+.list-item {
+    display: flex;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+    padding: 10px;
+}
+
+.thumbnail {
+    width: 80px;
+    height: 120px;
+    object-fit: cover;
+    border-radius: 5px;
+}
+
+.details {
+    margin-left: 10px;
+    flex-grow: 1;
+}
+
+h3 {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333;
+}
+
+p {
+    font-size: 14px;
+    color: #666;
+}
+
+span{
+    border: 2px solid brown;
+    padding: 2px;
+    display: inline-block;
+    border-radius: 5px;
+    font-size: 14px;
+    color: black;
+}
+
+.tags-container {
+    display: flex;
+    position: relative;
+}
+
+/*#category-select, #dropdown-input, #comic-input{*/
+.input-item {
+    padding: 8px;
+    font-size: 16px;
+    box-sizing: border-box;
+    height: 40px; /* 统一高度 */
+    width: 100%;
+    border: 1px solid #ccc; /* 统一边框样式 */
+    border-radius: 4px; /* 使外观更加圆润 */
+    margin: 0 0 10px 0;
+}
+
+#submit-button:active {
+    background-color: #e0e0e0; /* 按钮被点击时改变背景颜色 */
+    border-color: #999; /* 点击时改变边框颜色 */
+}
+
+#category-select{
+    width: 50%;
+}
+
+.dropdown-container {
+    display: flex;
+    flex-direction: column;
+    width: 95%;
+    position: relative;
+}
+
+.dropdown-list {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+    border: 1px solid #ccc;
+    border-top: none;
+    max-height: 150px;
+    overflow-y: auto;
+    display: none; /* 默认隐藏 */
+    width: 100%;
+    position: absolute;
+    top: 100%;
+}
+
+.dropdown-list li {
+    padding: 8px;
+    background-color: white;
+    cursor: pointer;
+}
+
+.dropdown-list li:hover {
+    background-color: #f0f0f0;
+}
+
+.title-bar-class {
+    display: flex;
+}
+
+.title-item{
+    font-size: 16px;
+    height: 4vh; /* 统一高度 */
+    width: min(15vw, 80px);
+    border: 1px solid #ccc; /* 统一边框样式 */
+    border-radius: 4px; /* 使外观更加圆润 */
+}
+
+.title-item:active {
+    background-color: #e0e0e0; /* 按钮被点击时改变背景颜色 */
+    border-color: #999; /* 点击时改变边框颜色 */
+}

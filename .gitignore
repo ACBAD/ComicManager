@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.log
+.env
+*.swp
+.idea/
+archived_comics/
+bkp_log
+comic.hayaseyuuka.date.*
+Comics.db
+favicon.ico
+r2.json
