@@ -44,6 +44,26 @@
         }
     </style>
 </head>
+<script>
+    function updateImage() {
+        const imgElement = document.getElementById("displayedImage");
+        imgElement.src = images[currentIndex];
+        document.getElementById("current").innerText = (currentIndex + 1).toString();
+    }
+
+    function changeImage(direction) {
+        let step = parseInt(document.getElementById("stepInput").value) || 1; // 获取输入框值，默认1
+        currentIndex += direction * step;
+        if (currentIndex < 0) {
+            currentIndex = 0;
+        } else if (currentIndex >= images.length) {
+            currentIndex = images.length - 1;
+        }
+        updateImage();
+    }
+
+    window.onload = updateImage;
+</script>
 <body>
     <h3>总共<span id="total">3</span>张，现在是第<span id="current">1</span>张</h3>
     <div class="container">
@@ -65,25 +85,6 @@
         ];
         document.getElementById('total').textContent = images.length.toString();
         let currentIndex = 0;
-
-        function updateImage() {
-            const imgElement = document.getElementById("displayedImage");
-            imgElement.src = images[currentIndex];
-            document.getElementById("current").innerText = (currentIndex + 1).toString();
-        }
-
-        function changeImage(direction) {
-            let step = parseInt(document.getElementById("stepInput").value) || 1; // 获取输入框值，默认1
-            currentIndex += direction * step;
-            if (currentIndex < 0) {
-                currentIndex = 0;
-            } else if (currentIndex >= images.length) {
-                currentIndex = images.length - 1;
-            }
-            updateImage();
-        }
-
-        window.onload = updateImage;
     </script>
 </body>
 </html>
