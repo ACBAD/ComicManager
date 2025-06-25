@@ -134,7 +134,7 @@ def show_comic(comic_id):
         comic_file = os.path.join(comic_path, db.get_comic_info(comic_id)[3])
         pic_list = get_zip_namelist(comic_file)
         images = [f'/comic_pic/{comic_id}/{image}' for image in range(len(pic_list))]
-        return flask.render_template('gallery.html', images=images)
+        return flask.render_template('gallery-v2.html', images=images)
 
 
 @app.route('/src/<path:filename>')
