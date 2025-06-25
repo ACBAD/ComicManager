@@ -1,1 +1,1 @@
-D:/CodeLib/ComicManager/Hitomi_Downloader/hitomiv2.py
+Hitomi_Downloader/hitomiv2.py
