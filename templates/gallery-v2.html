@@ -1,8 +1,7 @@
 <!DOCTYPE html>
-<!--suppress HtmlFormInputWithoutLabel-->
 <html lang="zh">
 <head>
-    <title></title>
+    <title>本子浏览</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
@@ -56,6 +55,31 @@
         document.getElementById("current").innerText = (currentIndex + 1).toString();
     }
 
+    async function preloadImages(limit = 5) {
+        let index = 0;
+        let active = 0;
+        return new Promise((resolve) => {
+            function next() {
+                if (index >= images.length && active === 0) {
+                    resolve(); // 所有图片加载完成
+                    return;
+                }
+                while (active < limit && index < images.length) {
+                    const img = new Image();
+                    const src = images[index];
+                    index++;
+                    active++;
+                    img.onload = img.onerror = () => {
+                        active--;
+                        next(); // 加载完成后尝试继续下一个
+                    };
+                    img.src = src;
+                }
+            }
+            next();
+        });
+    }
+
     function changeImage(direction) {
         let step = parseInt(document.getElementById("stepInput").value) || 1; // 获取输入框值，默认1
         currentIndex += direction * step;
@@ -65,6 +89,7 @@
             currentIndex = images.length - 1;
         }
         updateImage();
+        preloadImages(5);
     }
 
     window.onload = updateImage;
