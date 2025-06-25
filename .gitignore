@@ -11,3 +11,7 @@ Comics.db
 favicon.ico
 r2.json
 lanzou.json
+apache2.conf
+archived_comics
+frpc
+venv/
