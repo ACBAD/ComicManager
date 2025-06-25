@@ -46,9 +46,7 @@
 </head>
 <script>
     const images = [
-            {% for image in images %}
-                "{{ image }}",
-            {% endfor %}
+            {% for image in images %}"{{ image }}",{% endfor %}
         ];
         document.getElementById('total').textContent = images.length.toString();
         let currentIndex = 0;
