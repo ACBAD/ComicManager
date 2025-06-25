@@ -89,10 +89,12 @@
             currentIndex = images.length - 1;
         }
         updateImage();
-        preloadImages(5);
     }
 
-    window.onload = updateImage;
+    window.onload = () => {
+        updateImage();
+        preloadImages(5);
+    };
 </script>
 <body>
     <h3>总共<span id="total">3</span>张，现在是第<span id="current">1</span>张</h3>
