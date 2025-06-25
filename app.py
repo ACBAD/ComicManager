@@ -142,5 +142,21 @@ def get_src(filename):
     return flask.send_from_directory('src', filename)
 
 
+test_show_status = 0
+
+
+@app.route('/cache/status')
+def get_cache_status():
+    global test_show_status
+    test_show_status += 1
+    status_list = [
+        {"name": " 與野貓少女一起生活的方法 Ch. 22-40", "percent": 20},
+        {"name": " 和纱胁迫羞耻命令 (Blue Archive) [Chinese]【机翻汉化+修正】", "percent": 40},
+        {"name": "ccc", "percent": 100},
+        {"name": "ddd", "percent": test_show_status},
+    ]
+    return flask.render_template('show_cache_status.html', status_list=status_list)
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0')
