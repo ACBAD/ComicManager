@@ -14,14 +14,17 @@
             margin-top: 20px;
         }
         .image-container {
-            max-width: 90%;
+            max-width: 100%;
             margin: 0 auto;
         }
         img {
-            width: 100%;
+            max-width: 100%;
+            max-height: 80vh;
+            width: auto;
             height: auto;
             display: block;
             margin: 0 auto;
+            object-fit: contain;
         }
         .controls {
             margin-top: 10px;
@@ -55,7 +58,7 @@
 
     <script>
         const images = [
-            "/comic/src/123.jpg",
+            "/src/default.jpg",
         ]; // 图片文件名（实际应用中可动态获取）
         let currentIndex = 0;
 
