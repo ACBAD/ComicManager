@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>色孽神选</title>
+    <link rel="stylesheet" href="/comic/src/exploror.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="/comic/src/exploror.js"></script>
+</head>
+<body>
+<div id="title-bar" class="title-bar-class">
+    <h1>色孽神选</h1>
+    <button id="prev-page-button-top" class="title-item">PREV</button>
+    <h3>第</h3>
+    <h2 id="now-page">1</h2>
+    <h2>/</h2>
+    <h2 id="total-page">1</h2>
+    <h3>页</h3>
+    <button id="next-page-button-top" class="title-item">NEXT</button>
+</div>
+    <div class="nav-container">
+        <div class="tags-container">
+            <!-- 不可输入的下拉列表，用于筛选 -->
+            <select id="category-select" class="input-item" onchange="updateDropdownList()">
+                {% for group_name, group_id in tag_groups.items() %}
+                    <option value="{{ group_id }}">{{ group_name }}</option>
+                {% endfor %}
+            </select>
+            <div class="dropdown-container">
+                <!-- 可输入的下拉列表 -->
+                <input type="text" id="dropdown-input" class="input-item" placeholder="输入tag名选择"
+                       oninput="filterList()">
+                <ul id="dropdown-list" class="dropdown-list">
+                </ul>
+            </div>
+        </div>
+        <input type="text" id="comic-input" class="input-item" placeholder="输入title检索">
+        <button type="button" class="input-item" id="submit-button" onclick="submitSearchArgs()">提交</button>
+    </div>
+<div class="list-class" id="list-container">
+    <div class="list-item">
+        <img src="/comic/src/123.jpg" alt="图像1" class="thumbnail">
+        <div class="details">
+            <h3>Example Comic</h3>
+            <div class="tag-info">
+                <span>HayaseYuuka</span>
+            </div>
+        </div>
+    </div>
+
+</div>
+<div id="bottom-bar" class="title-bar-class">
+    <h1>色孽神选</h1>
+    <button id="prev-page-button-bottom" class="title-item">PREV</button>
+    <h3>第</h3>
+    <h2 id="now-page-bottom">1</h2>
+    <h2>/</h2>
+    <h2 id="total-page-bottom">1</h2>
+    <h3>页</h3>
+    <button id="next-page-button-bottom" class="title-item">NEXT</button>
+</div>
+</body>
+</html>
