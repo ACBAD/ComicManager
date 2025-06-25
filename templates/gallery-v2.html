@@ -45,6 +45,13 @@
     </style>
 </head>
 <script>
+    const images = [
+            {% for image in images %}
+                {{ image }},
+            {% endfor %}
+        ];
+        document.getElementById('total').textContent = images.length.toString();
+        let currentIndex = 0;
     function updateImage() {
         const imgElement = document.getElementById("displayedImage");
         imgElement.src = images[currentIndex];
@@ -76,15 +83,5 @@
             <button onclick="changeImage(1)">下翻页</button>
         </div>
     </div>
-
-    <script>
-        const images = [
-            {% for image in images %}
-                {{ image }},
-            {% endfor %}
-        ];
-        document.getElementById('total').textContent = images.length.toString();
-        let currentIndex = 0;
-    </script>
 </body>
 </html>
