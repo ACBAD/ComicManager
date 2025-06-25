@@ -11,10 +11,8 @@ comics_folder_id = 12172568
 DEFAULT_PASSWORD = b'anti-censor'
 
 lzy = LanZouCloud()
-lzy_cookie = {
-    'ylogin': '1842265',
-    'phpdisk_info': 'BzJUbgJkUG5XZ1QyAW4AUwVhAglZMVU6BT4GZlVlATADMVBnA2QMMgQzUwoNM1RoUTgDYwFtUGZVYQNhUDQAZwdhVGYCYVBpVzFUMQFsAG0FYwJlWWJVNQUyBjdVMQFhA2FQawMwDDgEP1NmDV5UP1E5AzkBaFAxVWUDZVBjADcHMVRj'
-}
+with open('lanzou.json') as lz_conf_f:
+    lzy_cookie = json.load(lz_conf_f)
 code = lzy.login_by_cookie(lzy_cookie)
 if code != LanZouCloud.SUCCESS:
     raise RuntimeError(f'Login failed: {code}')
