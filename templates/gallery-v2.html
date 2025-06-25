@@ -1,9 +1,10 @@
 <!DOCTYPE html>
+<!--suppress HtmlFormInputWithoutLabel-->
 <html lang="zh">
 <head>
+    <title></title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>图片翻页展示</title>
     <style>
         body {
             text-align: center;
@@ -44,7 +45,7 @@
     </style>
 </head>
 <body>
-    <h3>总共<span id="total">3</span>照片，现在是第<span id="current">1</span>照片</h3>
+    <h3>总共<span id="total">3</span>张，现在是第<span id="current">1</span>张</h3>
     <div class="container">
         <div class="image-container">
             <img id="displayedImage" src="" alt="加载中...">
@@ -58,14 +59,17 @@
 
     <script>
         const images = [
-            "/src/default.jpg",
-        ]; // 图片文件名（实际应用中可动态获取）
+            {% for image in images %}
+                {{ image }},
+            {% endfor %}
+        ];
+        document.getElementById('total').textContent = images.length.toString();
         let currentIndex = 0;
 
         function updateImage() {
             const imgElement = document.getElementById("displayedImage");
             imgElement.src = images[currentIndex];
-            document.getElementById("current").innerText = currentIndex + 1;
+            document.getElementById("current").innerText = (currentIndex + 1).toString();
         }
 
         function changeImage(direction) {
