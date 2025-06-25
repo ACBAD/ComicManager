@@ -111,5 +111,27 @@
 </body>
 <script>
     document.getElementById('total').textContent = images.length.toString();
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowLeft') changeImage(-1);
+        else if (e.key === 'ArrowRight') changeImage(1);
+    });
+    let touchStartX = 0;
+    let touchEndX = 0;
+    function handleGesture() {
+        const threshold = 50; // 滑动最小距离（像素）
+        const delta = touchEndX - touchStartX;
+        if (delta > threshold) {
+            changeImage(-1); // 向右滑动，上一张
+        } else if (delta < -threshold) {
+            changeImage(1); // 向左滑动，下一张
+        }
+    }
+    document.addEventListener('touchstart', e => {
+        touchStartX = e.changedTouches[0].screenX;
+    });
+    document.addEventListener('touchend', e => {
+        touchEndX = e.changedTouches[0].screenX;
+        handleGesture();
+    });
 </script>
 </html>
