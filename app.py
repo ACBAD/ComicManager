@@ -60,13 +60,7 @@ def gotoExploration():
                                      tag_groups=db.get_tag_groups())
 
 
-@app.route('/recoder')
-def gotoRecoder():
-    return flask.redirect('/comic/exploror')
-    # return flask.render_template('recorder.html')
-
-
-@app.route('/favicon')
+@app.route('/favicon.ico')
 def giveIcon():
     return flask.send_from_directory('.', 'favicon.ico')
 
@@ -114,7 +108,7 @@ def get_comic_pic(comic_id: int, pic_index: int):
     if pic_index is None:
         return str(len(pic_list))
     pic_ext = os.path.splitext(pic_list[pic_index])[1].replace('.', '')
-    img_content: io.BytesIO = get_zip_img(comic_file, pic_list[pic_index]) # type: ignore
+    img_content: io.BytesIO = get_zip_img(comic_file, pic_list[pic_index])  # type: ignore
     etag = hashlib.md5(img_content.read()).hexdigest()
     img_content.seek(0)
     # 获取客户端发送的 If-None-Match 头部
@@ -139,7 +133,7 @@ def show_comic(comic_id):
     with Comic_DB.ComicDB() as db:
         comic_file = os.path.join(comic_path, db.get_comic_info(comic_id)[3])
         pic_list = get_zip_namelist(comic_file)
-        images = [f'/comic/comic_pic/{comic_id}/{image}' for image in range(len(pic_list))]
+        images = [f'/comic_pic/{comic_id}/{image}' for image in range(len(pic_list))]
         return flask.render_template('gallery.html', images=images)
 
 

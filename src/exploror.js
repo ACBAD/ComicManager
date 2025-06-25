@@ -22,7 +22,7 @@ function updateDropdownList() {
     dropdownList.innerHTML = '';
     $.ajax({
         type: 'GET',
-        url: '/comic/get_tags/' + groupSelector.value,
+        url: '/get_tags/' + groupSelector.value,
         success: function (response){
             dropdownInput.placeholder = '更新完成, 输入tag部分以选择';
             for (const [tag_name, tag_id] of Object.entries(response)){
@@ -129,13 +129,13 @@ function createComic(item){
     comic_item.className = 'list-item';
     let comic_thumbnail = document.createElement('img');
     comic_thumbnail.className = 'thumbnail';
-    comic_thumbnail.src = '/comic/comic_pic/' + item[0] + '/0';
+    comic_thumbnail.src = '/comic_pic/' + item[0] + '/0';
     comic_item.appendChild(comic_thumbnail);
     let comic_details = document.createElement('div');
     comic_details.className = 'details'
     let comic_title = document.createElement('h3');
     let comic_link = document.createElement('a');
-    comic_link.href = '/comic/show_comic/' + item[0];
+    comic_link.href = '/show_comic/' + item[0];
     comic_link.textContent = item[1];
     comic_title.appendChild(comic_link);
     comic_details.appendChild(comic_title);
@@ -158,7 +158,7 @@ function createComic(item){
 function requestComics(){
     $.ajax({
         type: 'POST',
-        url: '/comic/search_comic',
+        url: '/search_comic',
         data: JSON.stringify(searchArgs),
         contentType: 'application/json;charset=UTF-8',
         success: function (response){
