@@ -1,1 +1,0 @@
-Hitomi_Downloader/hitomiv2.py
