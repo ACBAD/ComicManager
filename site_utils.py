@@ -3,6 +3,7 @@ from typing import Union, Optional
 import natsort
 import zipfile
 import io
+import platform
 from Comic_DB import ComicDB
 archived_comic_path = 'archived_comics'
 thumbnail_folder = 'thumbnail'
