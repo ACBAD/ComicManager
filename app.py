@@ -2,12 +2,12 @@ import hashlib
 import io
 import os
 import platform
-import zipfile
 from datetime import datetime, timezone
+from typing import Optional
 import flask
-import natsort
 import pypika.functions
 import Comic_DB
+from site_utils import archived_comic_path, getZipNamelist, getZipImage
 
 PAGE_COUNT = 10
 
@@ -19,28 +19,6 @@ else:
     curdir = '/var/www/comic'
     os.chdir(curdir)
 
-comic_path = 'archived_comics'
-
-
-def get_zip_namelist(zip_path):
-    if not os.path.exists(zip_path):
-        return f"{os.listdir(comic_path)}"
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        return natsort.natsorted(zip_ref.namelist())
-
-
-def get_zip_img(zip_path, pic_name):
-    # 检查 zip 文件是否存在
-    if not os.path.exists(zip_path):
-        return f"文件 {zip_path} 不存在"
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        # 读取图片文件内容并加载到内存
-        with zip_ref.open(pic_name) as img_file:
-            # 使用 BytesIO 将文件内容转为内存字节流
-            img_data = img_file.read()
-            img_bytes = io.BytesIO(img_data)
-            return img_bytes
-
 
 @app.route('/')
 def index():
@@ -50,14 +28,14 @@ def index():
 @app.route('/get_tags/<int:group_id>')
 def get_tags(group_id: int):
     with Comic_DB.ComicDB() as db:
-        return flask.jsonify(db.get_tags_by_group(group_id))
+        return flask.jsonify(db.getTagsByGroup(group_id))
 
 
 @app.route('/exploror')
 def gotoExploration():
     with Comic_DB.ComicDB() as db:
         return flask.render_template('exploror.html',
-                                     tag_groups=db.get_tag_groups())
+                                     tag_groups=db.getTagGroups())
 
 
 @app.route('/favicon.ico')
@@ -76,11 +54,11 @@ def search_comic():
         target_page = 1
     with Comic_DB.ComicDB() as db:
         if target_tag:
-            builder = db.search_comic_by_tags(target_tag)
+            builder = db.searchComicByTags(target_tag)
         elif comic_author:
-            builder = db.search_comic_by_author(comic_author)
+            builder = db.searchComicByAuthor(comic_author)
         else:
-            builder = db.get_all_comics()
+            builder = db.getAllComics()
         old_builder = builder.builder.__copy__()
         builder.builder = builder.builder.select(pypika.functions.Count('*'))
         total_count = builder.submit()[0][1]
@@ -89,26 +67,32 @@ def search_comic():
         results = [result[0] for result in results]
         comics_info = []
         for result in results:
-            comic_info = db.get_comic_info(result)
+            comic_info = db.getComicInfo(result)
             comics_info.append(comic_info)
         return {'total_count': total_count, 'comics_info': comics_info}
 
 
 @app.route('/comic_pic/<int:comic_id>', defaults={'pic_index': None})
-@app.route('/comic_pic/<int:comic_id>/<int:pic_index>')
-def get_comic_pic(comic_id: int, pic_index: int):
+@app.route('/comic_pic/<int:comic_id>/<pic_index>')
+def get_comic_pic(comic_id: int, pic_index: Optional[str]):
     with Comic_DB.ComicDB() as db:
-        comic_info = db.get_comic_info(comic_id)
+        comic_info = db.getComicInfo(comic_id)
         if not comic_info:
             return flask.abort(404)
-        comic_file = os.path.join(comic_path, comic_info[3])
-    pic_list = get_zip_namelist(comic_file)
+        comic_file = os.path.join(archived_comic_path, comic_info[3])
+    pic_list = getZipNamelist(comic_file)
     if isinstance(pic_list, str):
         return pic_list
     if pic_index is None:
         return str(len(pic_list))
+    try:
+        pic_index = int(pic_index)
+    except ValueError:
+        return flask.abort(404)
+    if pic_index == -1:
+        pic_index = 0
     pic_ext = os.path.splitext(pic_list[pic_index])[1].replace('.', '')
-    img_content: io.BytesIO = get_zip_img(comic_file, pic_list[pic_index])  # type: ignore
+    img_content: io.BytesIO = getZipImage(comic_file, pic_list[pic_index])  # type: ignore
     etag = hashlib.md5(img_content.read()).hexdigest()
     img_content.seek(0)
     # 获取客户端发送的 If-None-Match 头部
@@ -131,8 +115,8 @@ def get_comic_pic(comic_id: int, pic_index: int):
 @app.route('/show_comic/<int:comic_id>')
 def show_comic(comic_id):
     with Comic_DB.ComicDB() as db:
-        comic_file = os.path.join(comic_path, db.get_comic_info(comic_id)[3])
-        pic_list = get_zip_namelist(comic_file)
+        comic_file = os.path.join(archived_comic_path, db.getComicInfo(comic_id)[3])
+        pic_list = getZipNamelist(comic_file)
         images = [f'/comic_pic/{comic_id}/{image}' for image in range(len(pic_list))]
         return flask.render_template('gallery-v2.html', images=images)
 

@@ -1,12 +1,11 @@
 import os.path
 import sqlite3
-from token import OP
 from typing import Optional
 import pypika
 
 
 class SuspendSQLQuery:
-    def __init__(self, cursor: sqlite3.Cursor, builder: pypika.dialects.SQLLiteQueryBuilder): # type: ignore
+    def __init__(self, cursor: sqlite3.Cursor, builder: pypika.dialects.SQLLiteQueryBuilder):  # type: ignore
         self.cursor = cursor
         self.builder = builder
 
@@ -16,8 +15,8 @@ class SuspendSQLQuery:
 
 
 class ComicDB:
-    def __init__(self):
-        self.conn = sqlite3.connect('Comics.db')
+    def __init__(self, db_file_name: str = 'Comics.db'):
+        self.conn = sqlite3.connect(db_file_name)
         self.cursor = self.conn.cursor()
         self.init_db()
         self.conn.commit()
@@ -69,11 +68,11 @@ class ComicDB:
                 )
                 ''')
 
-    def get_all_comics(self) -> SuspendSQLQuery:
+    def getAllComics(self) -> SuspendSQLQuery:
         builder = pypika.SQLLiteQuery.from_('Comics').select('ID').orderby('ID', order=pypika.Order.desc)
         return SuspendSQLQuery(self.cursor, builder)
 
-    def search_comic_by_tags(self, *tags) -> SuspendSQLQuery:
+    def searchComicByTags(self, *tags) -> SuspendSQLQuery:
         # 创建查询语句
         builder = (pypika.SQLLiteQuery.from_('ComicTags')
                    .select('ComicID')
@@ -81,7 +80,7 @@ class ComicDB:
                    .orderby('ComicID', order=pypika.Order.desc))
         return SuspendSQLQuery(self.cursor, builder)
 
-    def search_comic_by_name(self, name, total_match=False):
+    def searchBomicByName(self, name, total_match=False):
         if not total_match:
             # 使用 LIKE 进行模糊搜索，% 表示任意数量的字符
             query = 'SELECT * FROM Comics WHERE Title LIKE ?'
@@ -93,7 +92,7 @@ class ComicDB:
         results = self.cursor.fetchall()
         return results
 
-    def search_comic_by_author(self, author) -> SuspendSQLQuery:
+    def searchComicByAuthor(self, author) -> SuspendSQLQuery:
         builder = (pypika.SQLLiteQuery
                    .from_('Comics')
                    .select('ID')
@@ -101,7 +100,7 @@ class ComicDB:
                    .orderby('ID', order=pypika.Order.desc))
         return SuspendSQLQuery(self.cursor, builder)
 
-    def get_comic_info(self, comic_id):
+    def getComicInfo(self, comic_id):
         query = 'SELECT * FROM Comics WHERE ID = ?'
         self.cursor.execute(query, (comic_id,))
         comic_result = self.cursor.fetchone()
@@ -114,7 +113,7 @@ class ComicDB:
             tags = tuple()
         return comic_result + (tuple(tag[0] for tag in tags),)
 
-    def search_comic_by_file(self, filename):
+    def searchComicByFile(self, filename):
         query = 'SELECT * FROM Comics WHERE FilePath = ?'
         self.cursor.execute(query, (filename,))
         results = self.cursor.fetchone()
@@ -123,7 +122,7 @@ class ComicDB:
         else:
             return None
 
-    def get_tag_groups(self):
+    def getTagGroups(self):
         # 查询所有标签组
         query = 'SELECT ID, GroupName FROM TagGroups'
         self.cursor.execute(query)
@@ -133,7 +132,7 @@ class ComicDB:
             result_dict[group_name] = group_id
         return result_dict
 
-    def get_tag_by_name(self, tag_name):
+    def getTagByName(self, tag_name):
         query = 'SELECT * FROM Tags WHERE Name = ?'
         self.cursor.execute(query, (tag_name,))
         results = self.cursor.fetchone()
@@ -141,7 +140,7 @@ class ComicDB:
             return results[0]
         return None
 
-    def get_tag_by_hitomi(self, hitomi_name):
+    def getTagByHitomi(self, hitomi_name):
         query = 'SELECT * FROM Tags WHERE HitomiAlter = ?'
         self.cursor.execute(query, (hitomi_name,))
         results = self.cursor.fetchone()
@@ -149,7 +148,7 @@ class ComicDB:
             return results[0]
         return None
 
-    def get_tags_by_group(self, group_id):
+    def getTagsByGroup(self, group_id):
         # 查询某个标签组内的所有标签
         query = '''
             SELECT ID, Name
@@ -164,7 +163,7 @@ class ComicDB:
             result_dict[tag_name] = tag_id
         return result_dict
 
-    def add_comic(self, title, filepath, author=None, series=None, volume=None, check_file=True) -> Optional[int]:
+    def addComic(self, title, filepath, author=None, series=None, volume=None, check_file=True) -> Optional[int]:
         # 校验输入合法性
         """
         retval:
@@ -190,14 +189,14 @@ class ComicDB:
         self.conn.commit()
         return self.cursor.lastrowid
 
-    def edit_comic(self, comic_id,
-                   title=None,
-                   filepath=None,
-                   author=None,
-                   series=None,
-                   volume=None,
-                   sinicization=None,
-                   cm_id=None) -> str:
+    def editComic(self, comic_id,
+                  title=None,
+                  filepath=None,
+                  author=None,
+                  series=None,
+                  volume=None,
+                  sinicization=None,
+                  cm_id=None) -> str:
         # 构建更新语句
         query = 'UPDATE Comics SET '
         parameters = []
@@ -238,7 +237,7 @@ class ComicDB:
         self.conn.commit()
         return ''
 
-    def delete_comic(self, comic_id: int) -> int:
+    def deleteComic(self, comic_id: int) -> int:
         """
         retval
         -1: No Comics found
@@ -253,7 +252,7 @@ class ComicDB:
             return 0
         return -1
 
-    def add_tag_group(self, group_name) -> Optional[int]:
+    def addTagGroup(self, group_name) -> Optional[int]:
         insert_str = f'INSERT INTO TagGroups (GroupName) VALUES (?)'
         try:
             self.cursor.execute(insert_str, (group_name,))
@@ -263,7 +262,7 @@ class ComicDB:
             self.conn.rollback()
             return -1
 
-    def delete_tag_group(self, group_id) -> int:
+    def deleteTagTroup(self, group_id) -> int:
         delete_str = f'DELETE FROM TagGroups WHERE ID = ?'
         self.cursor.execute(delete_str, (group_id,))
         # 提交事务
@@ -273,7 +272,7 @@ class ComicDB:
             return 0
         return -1
 
-    def add_tag(self, group_id: int, tag_name: str, hitomi_alter=None) -> Optional[int]:
+    def addTag(self, group_id: int, tag_name: str, hitomi_alter=None) -> Optional[int]:
         """
         retval:
         -1: Group ID not found
@@ -301,7 +300,7 @@ class ComicDB:
                 return -2
             return -3
 
-    def delete_tag(self, tag_id) -> int:
+    def deleteTag(self, tag_id) -> int:
         delete_str = f'DELETE FROM Tags WHERE ID = ?'
         self.cursor.execute(delete_str, (tag_id,))
         self.conn.commit()
@@ -309,7 +308,7 @@ class ComicDB:
             return 0
         return -1
 
-    def get_range_comics(self, count=10, end: Optional[int] = None) -> list:
+    def getRangeComics(self, count=10, end: Optional[int] = None) -> list:
         query = 'SELECT ID FROM Comics ORDER BY ID DESC LIMIT ? OFFSET ?'
         if end:
             if count < 1:
@@ -322,7 +321,7 @@ class ComicDB:
         comics = self.cursor.fetchall()
         return comics
 
-    def link_tag_to_comic(self, comic_id, tag_id):
+    def linkTag2Comic(self, comic_id, tag_id):
         """
         retval
         -1: Link has been Established
@@ -350,7 +349,7 @@ class ComicDB:
                 return -3
             return -4
 
-    def verify_file(self, base_path):
+    def verifyComicFile(self, base_path):
         query_str = f'SELECT ID, FilePath FROM Comics'
         self.cursor.execute(query_str)
         results = self.cursor.fetchall()
@@ -362,17 +361,16 @@ class ComicDB:
                 file_match_ids.append(comic_id)
         return not_exist_files, file_match_ids
 
-    def get_wandering_file(self, base_path):
+    def getWanderingFile(self, base_path):
         files = os.listdir(base_path)
-        wandering_files = []
+        wandering_files = set()
         for file in files:
-            result = self.search_comic_by_file(file)
+            result = self.searchComicByFile(file)
             if not result:
-                wandering_files.append(file)
+                wandering_files.add(file)
         return wandering_files
 
 
 if __name__ == '__main__':
     with ComicDB() as db:
-        print(db.get_wandering_file('archived_comics'))
-
+        print(db.getWanderingFile('archived_comics'))
