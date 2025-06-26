@@ -1,11 +1,11 @@
 import datetime
-from cf_r2 import uploadFile, listFiles, moveFile
-from lanzou_upload import listComics, uploadComic
+from cf_r2 import uploadFile, listFiles
+from lanzou_api import listComics, uploadComic
 import os
+from site_utils import archived_comic_path
 
-local_comics_path = 'archived_comics/'
+local_comics_path = archived_comic_path + '/'
 backup_comic_path = 'comic/'
-problem_backups_path = 'problem_comic/'
 
 
 def getBackupComics():
@@ -35,15 +35,8 @@ if __name__ == '__main__':
     print('Getting backuped comics')
     backuped_files = getBackupComics()
     local_files = set(os.listdir(local_comics_path))
-    problem_backup_files = backuped_files - local_files
     non_backup_files = local_files - backuped_files
-    print(f'In backup but not in local: {problem_backup_files}')
     print(f'Need backup: {non_backup_files}')
-    print('Start process problem comics')
-    for index, bucket_file in enumerate(problem_backup_files):
-        move_result = moveFile(backup_comic_path + bucket_file, problem_backups_path + bucket_file)
-        print(f'Moving {bucket_file}, Result {move_result}, Now {index + 1}/{len(problem_backup_files)}')
-    print('End process problem comics')
     print('Start upload for backup comics')
     for index, local_file in enumerate(non_backup_files):
         if uploadLocalComic(local_comics_path + local_file) == 0:
