@@ -1,6 +1,6 @@
 import os.path
 import sqlite3
-from typing import Optional
+from typing import Optional, Tuple
 import pypika
 
 
@@ -100,7 +100,7 @@ class ComicDB:
                    .orderby('ID', order=pypika.Order.desc))
         return SuspendSQLQuery(self.cursor, builder)
 
-    def getComicInfo(self, comic_id):
+    def getComicInfo(self, comic_id) -> tuple:
         query = 'SELECT * FROM Comics WHERE ID = ?'
         self.cursor.execute(query, (comic_id,))
         comic_result = self.cursor.fetchone()
@@ -108,7 +108,7 @@ class ComicDB:
         self.cursor.execute(query, (comic_id,))
         tags = self.cursor.fetchall()
         if comic_result is None:
-            comic_result = tuple()
+            return ()
         if tags is None:
             tags = tuple()
         return comic_result + (tuple(tag[0] for tag in tags),)
