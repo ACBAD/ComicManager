@@ -7,7 +7,7 @@ from typing import Optional
 import flask
 import pypika.functions
 import Comic_DB
-from site_utils import archived_comic_path, getZipNamelist, getZipImage
+from site_utils import archived_comic_path, getZipNamelist, getZipImage, generateThumbnail, thumbnail_folder
 
 PAGE_COUNT = 10
 
@@ -89,27 +89,35 @@ def get_comic_pic(comic_id: int, pic_index: Optional[str]):
         pic_index = int(pic_index)
     except ValueError:
         return flask.abort(404)
+
+    def createPicResponse(content: io.BytesIO, pic_ext: str):
+        etag = hashlib.md5(content.read()).hexdigest()
+        content.seek(0)
+        # 获取客户端发送的 If-None-Match 头部
+        if_none_match = flask.request.headers.get("If-None-Match")
+        # 如果 ETag 匹配，则返回 304 Not Modified
+        if if_none_match == etag:
+            return flask.Response(status=304)
+        # 计算 Last-Modified 时间
+        last_modified = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
+        # 已在客户端实现全量数据翻转功能，无需考虑是否破坏图片二进制结构
+        # response = flask.Response(bytes(~b & 0xFF for b in img_content.read()),
+        #                           content_type=f"image/{pic_ext}")
+        response = flask.Response(content.read(), content_type=f"image/{pic_ext}")
+        response.headers["Cache-Control"] = "public, max-age=2678400"  # 缓存 1 个月
+        response.headers["ETag"] = etag
+        response.headers["Last-Modified"] = last_modified
+        return response
+
     if pic_index == -1:
-        pic_index = 0
-    pic_ext = os.path.splitext(pic_list[pic_index])[1].replace('.', '')
+        thumbnail_path = os.path.join(thumbnail_folder, f'{comic_id}.webp')
+        if not os.path.exists(thumbnail_path):
+            generateThumbnail(comic_id)
+        with open(os.path.join(thumbnail_folder, f'{comic_id}.webp'), 'rb') as thumbnail_f:
+            return createPicResponse(io.BytesIO(thumbnail_f.read()), 'webp')
+
     img_content: io.BytesIO = getZipImage(comic_file, pic_list[pic_index])  # type: ignore
-    etag = hashlib.md5(img_content.read()).hexdigest()
-    img_content.seek(0)
-    # 获取客户端发送的 If-None-Match 头部
-    if_none_match = flask.request.headers.get("If-None-Match")
-    # 如果 ETag 匹配，则返回 304 Not Modified
-    if if_none_match == etag:
-        return flask.Response(status=304)
-    # 计算 Last-Modified 时间
-    last_modified = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
-    # 已在客户端实现全量数据翻转功能，无需考虑是否破坏图片二进制结构
-    # response = flask.Response(bytes(~b & 0xFF for b in img_content.read()),
-    #                           content_type=f"image/{pic_ext}")
-    response = flask.Response(img_content.read(), content_type=f"image/{pic_ext}")
-    response.headers["Cache-Control"] = "public, max-age=2678400"  # 缓存 1 个月
-    response.headers["ETag"] = etag
-    response.headers["Last-Modified"] = last_modified
-    return response
+    return createPicResponse(img_content, os.path.splitext(pic_list[pic_index])[1].replace('.', ''))
 
 
 @app.route('/show_comic/<int:comic_id>')
