@@ -7,6 +7,12 @@ from Comic_DB import ComicDB
 archived_comic_path = 'archived_comics'
 thumbnail_folder = 'thumbnail'
 
+if platform.system() == 'Windows':
+    curdir = os.path.abspath('.')
+else:
+    curdir = '/var/www/comic'
+    os.chdir(curdir)
+
 if not os.path.exists(archived_comic_path):
     os.makedirs(archived_comic_path)
 
