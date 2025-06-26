@@ -129,7 +129,7 @@ function createComic(item){
     comic_item.className = 'list-item';
     let comic_thumbnail = document.createElement('img');
     comic_thumbnail.className = 'thumbnail';
-    comic_thumbnail.src = '/comic_pic/' + item[0] + '/0';
+    comic_thumbnail.src = '/comic_pic/' + item[0] + '/-1';
     comic_item.appendChild(comic_thumbnail);
     let comic_details = document.createElement('div');
     comic_details.className = 'details'

@@ -1,14 +1,15 @@
 import json
 import os
-import pyzipper
-from typing import Tuple, Set
-from io import BytesIO
-from lanzou.api import LanZouCloud
-from lanzou.api.types import File
 import pickle
+from io import BytesIO
+from typing import Tuple, Set, Union, Optional, Dict, Callable
+import pyzipper
+from lanzou.api import LanZouCloud
+from lanzou.api.models import FileList
 
 comics_folder_id = 12172568
 DEFAULT_PASSWORD = b'anti-censor'
+comic_file_id_matches: Optional[Dict[str, int]] = None
 
 lzy = LanZouCloud()
 with open('lanzou.json') as lz_conf_f:
@@ -60,7 +61,9 @@ def decryptComicZip(encrypted_buf: BytesIO) -> BytesIO:
     return plain_buf
 
 
-def listComics() -> Set[str]:
+def listComics(ret_raw=False) -> Union[Set[str], FileList]:
+    if ret_raw:
+        return lzy.get_file_list(comics_folder_id)
     return {file.name for file in lzy.get_file_list(comics_folder_id)}
 
 
@@ -74,6 +77,49 @@ def uploadComic(comic_path) -> int:
                              callback=callback)
 
 
+def updateFileIdMatches() -> bool:
+    global comic_file_id_matches
+    comic_file_id_matches = lzy.get_file_list(comics_folder_id).name_id
+    if not comic_file_id_matches:
+        return False
+    return True
+
+
+def downloadComic(file_name: str, path: Optional[str] = None, callback: Optional[Union[str, Callable]] = 'def') -> int:
+    def cb_maker(filename):
+        def dl_cb(total_size, now_size):
+            print(f'\rFile: {filename} Progress: {now_size / total_size * 100 :.2f}%')
+        return dl_cb
+
+    if not comic_file_id_matches:
+        if not updateFileIdMatches():
+            return LanZouCloud.FAILED
+    encrypted_buf = BytesIO()
+    if file_name not in comic_file_id_matches:
+        if not updateFileIdMatches():
+            return LanZouCloud.FAILED
+        if file_name not in comic_file_id_matches:
+            return LanZouCloud.ID_ERROR
+    if callback == 'def':
+        encrypted_buf_stat = lzy.download2buffer(comic_file_id_matches[file_name],
+                                                 encrypted_buf,
+                                                 callback=cb_maker(file_name))
+    else:
+        assert isinstance(callback, Callable)
+        encrypted_buf_stat = lzy.download2buffer(comic_file_id_matches[file_name],
+                                                 encrypted_buf,
+                                                 callback=callback)
+    if encrypted_buf_stat:
+        return encrypted_buf_stat
+    decrypted_buf = decryptComicZip(encrypted_buf)
+    if path:
+        with open(os.path.join(path, file_name), 'wb') as f:
+            f.write(decrypted_buf.read())
+    else:
+        with open(file_name, 'wb') as f:
+            f.write(decrypted_buf.read())
+    return LanZouCloud.SUCCESS
+
+
 if __name__ == '__main__':
-    with open('lz_files.pkl', 'rb') as lzf:
-        print(pickle.load(lzf)[0].name)
+    downloadComic('5df09b5c8f794513bae1947579749d34.zip')

@@ -5,9 +5,9 @@ import sys
 from typing import Union
 from hitomiv2 import Hitomi
 import Comic_DB
+from site_utils import archived_comic_path
 
 raw_path = 'raw_comic'
-archive_path = 'archived_comics'
 hitomi = Hitomi(proxy_settings={'http': 'http://127.0.0.1:10809', 'https': 'http://127.0.0.1:10809'},
                 storage_path_fmt=raw_path, debug_fmt=False)
 
@@ -17,7 +17,7 @@ def get_file_hash(file_path):
 
 
 def log_tag(db_obj: Comic_DB.ComicDB, igroup_id: Union[None, int], hitomi_name) -> int:
-    db_query_result = db_obj.get_tag_by_hitomi(hitomi_name)
+    db_query_result = db_obj.getTagByHitomi(hitomi_name)
     if not db_query_result:
         print(f'hitomi name: {hitomi_name}')
         if not igroup_id:
@@ -28,7 +28,7 @@ def log_tag(db_obj: Comic_DB.ComicDB, igroup_id: Union[None, int], hitomi_name) 
                     break
                 print('请输入纯数字id')
         tag_name = input('tag 原名')
-        add_result = db_obj.add_tag(igroup_id, tag_name, hitomi_name)
+        add_result = db_obj.addTag(igroup_id, tag_name, hitomi_name)
         if add_result < 0:
             print(add_result)
         return add_result
@@ -120,18 +120,18 @@ while True:
         hash_name = f'{comic_hash}.zip'
         comp_path = os.path.join(raw_path, hash_name)
         shutil.move(os.path.join(raw_path, download_name),
-                  os.path.join(raw_path, hash_name))
+                    os.path.join(raw_path, hash_name))
 
-        comic_id = db.add_comic(comic.title, comp_path, comic_author)
+        comic_id = db.addComic(comic.title, comp_path, comic_author)
         if comic_id < 0:
             print(f'无法添加本子: {comic_id}')
             os.remove(comp_path)
             continue
         print('开始链接tags')
         for tag in comic_tags_list:
-            link_result = db.link_tag_to_comic(comic_id, tag)
+            link_result = db.linkTag2Comic(comic_id, tag)
             if link_result < 0:
                 print(f'tag {tag}链接失败，错误id: {link_result}')
         print('录入完成，移入完成文件夹')
-        shutil.move(comp_path, os.path.join(archive_path, hash_name))
+        shutil.move(comp_path, os.path.join(archived_comic_path, hash_name))
 print('录入完成')
