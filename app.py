@@ -13,11 +13,7 @@ PAGE_COUNT = 10
 
 app = flask.Flask(__name__)
 
-if platform.system() == 'Windows':
-    curdir = os.path.abspath('.')
-else:
-    curdir = '/var/www/comic'
-    os.chdir(curdir)
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 
 @app.route('/')
@@ -123,10 +119,16 @@ def get_comic_pic(comic_id: int, pic_index: Optional[str]):
 @app.route('/show_comic/<int:comic_id>')
 def show_comic(comic_id):
     with Comic_DB.ComicDB() as db:
-        comic_file = os.path.join(archived_comic_path, db.getComicInfo(comic_id)[3])
-        pic_list = getZipNamelist(comic_file)
-        images = [f'/comic_pic/{comic_id}/{image}' for image in range(len(pic_list))]
-        return flask.render_template('gallery-v2.html', images=images)
+        comic_info = db.getComicInfo(comic_id)
+    if not comic_info:
+        return flask.abort(404)
+    print(comic_info)
+    comic_file_path = os.path.join(archived_comic_path, comic_info[3])
+    if not os.path.exists(comic_file_path):
+        return flask.redirect('/cache/status')
+    pic_list = getZipNamelist(comic_file_path)
+    images = [f'/comic_pic/{comic_id}/{image}' for image in range(len(pic_list))]
+    return flask.render_template('gallery-v2.html', images=images)
 
 
 @app.route('/src/<path:filename>')
