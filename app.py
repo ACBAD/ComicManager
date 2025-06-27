@@ -1,7 +1,9 @@
+import os
+
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
 import hashlib
 import io
-import os
-import platform
 from datetime import datetime, timezone
 from typing import Optional
 import flask
@@ -12,8 +14,6 @@ from site_utils import archived_comic_path, getZipNamelist, getZipImage, generat
 PAGE_COUNT = 10
 
 app = flask.Flask(__name__)
-
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 
 @app.route('/')

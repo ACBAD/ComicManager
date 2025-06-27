@@ -145,7 +145,7 @@ def moveFile(src_path, dst_path):
     return True
 
 
-def upload_folder(folder_path):
+def uploadFolder(folder_path):
     files = os.listdir(folder_path)
     for file in files:
         uploadFile(f'{folder_path}/{file}', f'{folder_path}/{file}')

@@ -3,12 +3,9 @@ from typing import Union, Optional
 import natsort
 import zipfile
 import io
-import platform
 from Comic_DB import ComicDB
 archived_comic_path = 'archived_comics'
 thumbnail_folder = 'thumbnail'
-
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 if not os.path.exists(archived_comic_path):
     os.makedirs(archived_comic_path)

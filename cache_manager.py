@@ -1,3 +1,87 @@
+import asyncio
 import diskcache
+import copy
+import fastapi
+import pydantic
+from pydantic import BaseModel
+from site_utils import archived_comic_path
+import cf_comic
+import lanzou_api
+import enum
+from typing import List, Tuple, Optional
 
 
+class AsyncDict:
+    def __init__(self):
+        self._dict = {}
+        self._lock = asyncio.Lock()
+
+    async def get(self, key):
+        async with self._lock:
+            return self._dict.get(key)
+
+    async def set(self, key, value):
+        async with self._lock:
+            self._dict[key] = value
+
+    async def delete(self, key):
+        async with self._lock:
+            if key in self._dict:
+                del self._dict[key]
+
+    async def keys(self):
+        async with self._lock:
+            return list(self._dict.keys())
+
+    async def instant_copy(self) -> dict:
+        async with self._lock:
+            return copy.deepcopy(self._dict)
+
+    async def async_contains(self, key):
+        async with self._lock:
+            return key in self._dict
+
+
+tasks_status = AsyncDict()
+comic_cache = diskcache.Cache(archived_comic_path, size_limit=10 * 1024**3)
+
+
+class AvailableOSSPlatform(str, enum.Enum):
+    Lanzou = 'lanzou'
+    Cloudflare = 'r2'
+
+
+class ResponseStatus(int, enum.Enum):
+    SUCCESS = 0
+    FAILURE = 1
+    ASYNC = 2
+
+
+class TasksStatusResponse(pydantic.RootModel[List[Tuple[str, float]]]):
+    pass
+
+
+class TaskRequest(BaseModel):
+    filename: str
+    loacl_dir: Optional[str] = None
+    target_oss: Optional[AvailableOSSPlatform] = None
+
+
+app = fastapi.FastAPI()
+
+
+@app.post('/download_comic',
+          response_model=ResponseStatus,
+          status_code=fastapi.status.HTTP_202_ACCEPTED)
+async def requestDownload(request: TaskRequest):
+    await tasks_status.set(request.filename, 0)
+    return ResponseStatus.ASYNC
+
+
+@app.get(
+    "/tasks/status",
+    response_model=TasksStatusResponse)
+async def query_tasks_status():
+    now_status = await tasks_status.instant_copy()
+    data = [(k, v) for k, v in now_status.items()]
+    return TasksStatusResponse.model_validate(data)

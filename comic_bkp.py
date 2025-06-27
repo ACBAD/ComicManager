@@ -1,26 +1,25 @@
 import datetime
-from cf_r2 import uploadFile, listFiles
-from lanzou_api import listComics, uploadComic
-import os
+import lanzou_api
 from site_utils import archived_comic_path
+import cf_comic
+import os
 
 local_comics_path = archived_comic_path + '/'
-backup_comic_path = 'comic/'
 
 
 def getBackupComics():
-    r2_files = {os.path.basename(backup_file) for backup_file in listFiles(backup_comic_path)}
-    lanzou_files = listComics()
+    r2_files = cf_comic.listComics()
+    lanzou_files = lanzou_api.listComics()
     return r2_files | lanzou_files
 
 
 def uploadLocalComic(comic_path):
-    lz_upload_stat = uploadComic(comic_path)
+    lz_upload_stat = lanzou_api.uploadComic(comic_path)
     if lz_upload_stat == 0:
         print('')
         return 0
     print('\nToo big, go to R2')
-    if uploadFile(comic_path, backup_comic_path + os.path.basename(comic_path)):
+    if lanzou_api.uploadComic(comic_path):
         return 0
     return 1
 
@@ -28,7 +27,7 @@ if __name__ == '__main__':
     print('---------------------------Comic Backup Manager---------------------------')
     print(f'Now is {datetime.datetime.now()}')
     print('Backing up Database')
-    if uploadFile('Comics.db', recovery=True):
+    if cf_comic.uploadComic('Comics.db', recovery=True):
         print('Backing up Database Complete')
     else:
         print('Backing up Database Failed')
