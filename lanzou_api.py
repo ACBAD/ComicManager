@@ -88,7 +88,7 @@ def updateFileIdMatches() -> bool:
 def downloadComic(file_name: str, path: Optional[str] = None, callback: Optional[Union[str, Callable]] = 'def') -> int:
     def cb_maker(filename):
         def dl_cb(total_size, now_size):
-            print(f'\rFile: {filename} Progress: {now_size / total_size * 100 :.2f}%')
+            print(f'\rFile: {filename} Progress: {now_size / total_size * 100 :.2f}%', end='')
         return dl_cb
 
     if not comic_file_id_matches:

@@ -19,7 +19,7 @@ def uploadLocalComic(comic_path):
         print('')
         return 0
     print('\nToo big, go to R2')
-    if lanzou_api.uploadComic(comic_path):
+    if cf_comic.uploadComic(comic_path):
         return 0
     return 1
 
