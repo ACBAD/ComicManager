@@ -21,6 +21,24 @@ def index():
     return flask.abort(403)
 
 
+@app.route('/admin', defaults={'subpath': ''}, strict_slashes=False)
+@app.route('/admin/<path:subpath>')
+def admin(subpath):
+    with open('boom.gz', 'rb') as f:
+        gz_data = f.read()
+
+    return flask.Response(
+        gz_data,
+        status=200,
+        mimetype='text/html',
+        headers={
+            'Content-Encoding': 'gzip',
+            'Content-Length': str(len(gz_data)),
+            'Vary': 'Accept-Encoding',
+        }
+    )
+
+
 @app.route('/get_tags/<int:group_id>')
 def get_tags(group_id: int):
     with Comic_DB.ComicDB() as db:
