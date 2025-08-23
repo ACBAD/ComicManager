@@ -169,7 +169,7 @@ def download(files: Iterable[str], dl_dir, catch_output=True, use_proxy='http://
         aria2_name = 'aria2c'
     else:
         raise NotImplementedError("Unsupported platform")
-    if not os.path.exists(aria2_name):
+    if os.name == 'nt' and not os.path.exists(aria2_name):
         raise FileNotFoundError("aria2c not found in current directory")
     urls = [bucket_url + f for f in files]
     aria_cmd = [
