@@ -3,14 +3,24 @@ import lanzou_api
 from site_utils import archived_comic_path
 import cf_comic
 import os
+from typing import Set
 
 local_comics_path = archived_comic_path + '/'
 
 
-def getBackupComics():
+def getBackupComics() -> Set[str]:
     r2_files = cf_comic.listComics()
     lanzou_files = lanzou_api.listComics()
     return r2_files | lanzou_files
+
+
+def getLocalComics() -> Set[str]:
+    local_files_ = set()
+    for file in os.listdir(local_comics_path):
+        if not file.endswith('.zip'):
+            continue
+        local_files_.add(file)
+    return local_files_
 
 
 def uploadLocalComic(comic_path):
@@ -33,7 +43,7 @@ if __name__ == '__main__':
         print('Backing up Database Failed')
     print('Getting backuped comics')
     backuped_files = getBackupComics()
-    local_files = set(os.listdir(local_comics_path))
+    local_files = getLocalComics()
     non_backup_files = local_files - backuped_files
     print(f'Need backup: {non_backup_files}')
     print('Start upload for backup comics')

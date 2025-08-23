@@ -1,7 +1,7 @@
 import json
 import os
 import subprocess
-from typing import Iterable, Set, Union
+from typing import Iterable, Set
 import boto3
 import botocore.exceptions
 from botocore.config import Config
@@ -158,9 +158,11 @@ def remove_file(file_path):
     return False
 
 
-def download(files: Union[Iterable[str], str], dl_dir, catch_output=True):
+def download(files: Iterable[str], dl_dir, catch_output=True, use_proxy='http://127.0.0.1:10809'):
     if os.getenv('PYCHARM_HOSTED') == '1':
         raise EnvironmentError('PyCharm Hosted, cannot run aria2c in pycharm')
+    if not isinstance(files, Iterable):
+        raise RuntimeError("files must be Iterable")
     if os.name == 'nt':
         aria2_name = '.\\aria2c.exe'
     elif os.name == 'posix':
@@ -169,51 +171,31 @@ def download(files: Union[Iterable[str], str], dl_dir, catch_output=True):
         raise NotImplementedError("Unsupported platform")
     if not os.path.exists(aria2_name):
         raise FileNotFoundError("aria2c not found in current directory")
-    if isinstance(files, Iterable) and not isinstance(files, str):
-        urls = [bucket_url + f for f in files]
-        aria_cmd = [
-            aria2_name,
-            '--dir', dl_dir,
-            '-x', '16',
-            '-s', '16',
-            '--summary-interval=0',
-            '-i', '-'
-        ]
-        try:
-            process = subprocess.Popen(
-                aria_cmd,
-                stdin=subprocess.PIPE,
-                stdout=None if catch_output else subprocess.DEVNULL,
-                stderr=None if catch_output else subprocess.DEVNULL,
-                text=True  # 允许传递字符串而非bytes
-            )
-            process.communicate(input='\n'.join(urls))
-            return process.returncode
-        except Exception as e:
-            print(e)
-            return False
-    else:
-        # 单个文件
-        aria_cmd = [
-            aria2_name,
-            '--dir', dl_dir,
-            '-x', '16',
-            '-s', '16',
-            '--summary-interval=0',
-            bucket_url + files
-        ]
-        try:
-            process = subprocess.Popen(
-                aria_cmd,
-                stdin=None,
-                stdout=None if catch_output else subprocess.DEVNULL,
-                stderr=None if catch_output else subprocess.DEVNULL
-            )
-            process.communicate()
-            return process.returncode == 0
-        except Exception as e:
-            print(e)
-            return False
+    urls = [bucket_url + f for f in files]
+    aria_cmd = [
+        aria2_name,
+        '--dir', dl_dir,
+        '-x', '16',
+        '-s', '16',
+        '--summary-interval=0',
+        '-i', '-'
+    ]
+    if use_proxy:
+        aria_cmd.append('--all-proxy')
+        aria_cmd.append(use_proxy)
+    try:
+        process = subprocess.Popen(
+            aria_cmd,
+            stdin=subprocess.PIPE,
+            stdout=None if catch_output else subprocess.DEVNULL,
+            stderr=None if catch_output else subprocess.DEVNULL,
+            text=True  # 允许传递字符串而非bytes
+        )
+        process.communicate(input='\n'.join(urls))
+        return process.returncode
+    except Exception as e:
+        print(e)
+        return False
 
 
 def listFiles(folder_path) -> Set[str]:
