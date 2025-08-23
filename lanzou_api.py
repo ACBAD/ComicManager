@@ -1,6 +1,5 @@
 import json
 import os
-import pickle
 from io import BytesIO
 from typing import Tuple, Set, Union, Optional, Dict, Callable
 import pyzipper
@@ -122,4 +121,4 @@ def downloadComic(file_name: str, path: Optional[str] = None, callback: Optional
 
 
 if __name__ == '__main__':
-    downloadComic('5df09b5c8f794513bae1947579749d34.zip')
+    print(listComics())
