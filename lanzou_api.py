@@ -121,4 +121,4 @@ def downloadComic(file_name: str, path: Optional[str] = None, callback: Optional
 
 
 if __name__ == '__main__':
-    print(listComics())
+    print(downloadComic('ba6d4c2d86f66bc43c8e4edc8b3e341c.zip'))

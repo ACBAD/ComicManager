@@ -5,10 +5,10 @@ from typing import *
 r2_comic_path = 'comic/'
 
 
-def downloadComic(files: Union[Iterable[str], str], dl_dir, catch_output=True):
+def downloadComic(files: Union[Iterable[str], str], dl_dir, catch_output=None):
     if isinstance(files, str):
-        return cf_r2.download([r2_comic_path + files], dl_dir, catch_output=catch_output)
-    return cf_r2.download([(r2_comic_path + file) for file in files], dl_dir, catch_output=catch_output)
+        return cf_r2.download([r2_comic_path + files], dl_dir, callback=catch_output)
+    return cf_r2.download([(r2_comic_path + file) for file in files], dl_dir, callback=catch_output)
 
 
 def listComics():

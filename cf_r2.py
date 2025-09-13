@@ -158,7 +158,7 @@ def remove_file(file_path):
     return False
 
 
-def download(files: Iterable[str], dl_dir, catch_output=True, use_proxy='http://127.0.0.1:10809'):
+def download(files: Iterable[str], dl_dir, callback=None, use_proxy='http://127.0.0.1:10809'):
     if os.getenv('PYCHARM_HOSTED') == '1':
         raise EnvironmentError('PyCharm Hosted, cannot run aria2c in pycharm')
     if not isinstance(files, Iterable):
@@ -187,8 +187,8 @@ def download(files: Iterable[str], dl_dir, catch_output=True, use_proxy='http://
         process = subprocess.Popen(
             aria_cmd,
             stdin=subprocess.PIPE,
-            stdout=None if catch_output else subprocess.DEVNULL,
-            stderr=None if catch_output else subprocess.DEVNULL,
+            stdout=None if callback else subprocess.DEVNULL,
+            stderr=None if callback else subprocess.DEVNULL,
             text=True  # 允许传递字符串而非bytes
         )
         process.communicate(input='\n'.join(urls))

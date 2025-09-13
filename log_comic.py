@@ -2,6 +2,7 @@ import shutil
 import hashlib
 import os.path
 import sys
+import re
 from typing import Union
 from hitomiv2 import Hitomi
 import Comic_DB
@@ -58,6 +59,11 @@ while True:
     if not hitomi_id:
         print('结束录入')
         break
+    __match = re.search(r'(\d+)\.html$', hitomi_id)
+    if __match:
+        print('检测到HitomiURL')
+        print(f'提取出的目标ID为:{__match.group(1)}')
+        hitomi_id = __match.group(1)
     if not hitomi_id.isdigit():
         print('输入错误，重新输入')
         continue

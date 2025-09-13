@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 import diskcache
 import copy
 import fastapi
@@ -41,6 +42,10 @@ class AsyncDict:
         async with self._lock:
             return key in self._dict
 
+    async def pop(self):
+        async with self._lock:
+            return self._dict.pop()
+
 
 tasks_status = AsyncDict()
 comic_cache = diskcache.Cache(archived_comic_path, size_limit=10 * 1024**3)
@@ -57,6 +62,11 @@ class ResponseStatus(int, enum.Enum):
     ASYNC = 2
 
 
+class ResponseResult(BaseModel):
+    status: ResponseStatus
+    error_msg: str
+
+
 class TasksStatusResponse(pydantic.RootModel[List[Tuple[str, float]]]):
     pass
 
@@ -67,21 +77,49 @@ class TaskRequest(BaseModel):
     target_oss: Optional[AvailableOSSPlatform] = None
 
 
-app = fastapi.FastAPI()
+async def downloader():
+    try:
+        while True:
+            await asyncio.sleep(1)
+            if not tasks_status.keys():
+                continue
+
+    except asyncio.CancelledError:
+        print('downloader received cancell signal')
+    except Exception as e:
+        print(f'Unexcepted error in downloader: {e}')
+
+
+@asynccontextmanager
+async def lifespan(_: fastapi.FastAPI):
+    background_task = asyncio.create_task(downloader())
+    yield
+    if background_task:
+        background_task.cancel()
+        try:
+            await background_task
+        except asyncio.CancelledError:
+            pass
+
+
+# 将 lifespan 管理器传递给 FastAPI 实例
+app = fastapi.FastAPI(lifespan=lifespan)
 
 
 @app.post('/download_comic',
-          response_model=ResponseStatus,
+          response_model=ResponseResult,
           status_code=fastapi.status.HTTP_202_ACCEPTED)
-async def requestDownload(request: TaskRequest):
+async def RequestDownload(request: TaskRequest):
+    if await tasks_status.get(request.filename):
+        return ResponseResult(status=ResponseStatus.FAILURE, error_msg='Exists')
     await tasks_status.set(request.filename, 0)
-    return ResponseStatus.ASYNC
+    return ResponseResult(status=ResponseStatus.SUCCESS)
 
 
 @app.get(
     "/tasks/status",
     response_model=TasksStatusResponse)
-async def query_tasks_status():
+async def QueryTasksStatus():
     now_status = await tasks_status.instant_copy()
     data = [(k, v) for k, v in now_status.items()]
     return TasksStatusResponse.model_validate(data)
