@@ -140,7 +140,6 @@ def show_comic(comic_id):
         comic_info = db.getComicInfo(comic_id)
     if not comic_info:
         return flask.abort(404)
-    print(comic_info)
     comic_file_path = os.path.join(archived_comic_path, comic_info[3])
     if not os.path.exists(comic_file_path):
         return flask.redirect('/cache/status')
