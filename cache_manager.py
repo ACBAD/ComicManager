@@ -11,10 +11,11 @@ from typing import List, Dict, Optional, Callable
 import os
 import time
 import tempfile
+import traceback
 
 # --- 缓存配置 ---
 CACHE_SIZE_LIMIT = 10 * 1024 ** 3  # 10GB
-CACHE_DIRECTORY = archived_comic_path
+CACHE_DIRECTORY = 'archived_comic_path'
 CONCURRENT_DOWNLOADS = 3  # 最多同时下载3个文件
 
 
@@ -162,6 +163,7 @@ class DownloadManager:
 
                 except Exception as e:
                     print(f"Task {task.task_id} failed: {e}")
+                    traceback.print_exc()
                     async with self._lock:
                         task.status = DownloadStatus.FAILED
                         task.error_message = str(e)
@@ -173,10 +175,8 @@ class DownloadManager:
 comic_cache = CacheManager(CACHE_DIRECTORY, CACHE_SIZE_LIMIT)
 download_manager = DownloadManager()
 
+
 # --- FastAPI 应用 ---
-app = fastapi.FastAPI()
-
-
 @asynccontextmanager
 async def lifespan(_: fastapi.FastAPI):
     worker_task = asyncio.create_task(download_manager.worker())
@@ -188,7 +188,7 @@ async def lifespan(_: fastapi.FastAPI):
         print("Downloader worker stopped.")
 
 
-app.router.lifespan_context = lifespan
+app = fastapi.FastAPI(lifespan=lifespan)
 
 
 class TaskRequest(BaseModel):

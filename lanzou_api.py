@@ -99,13 +99,15 @@ def downloadComic(file_name: str, path: Optional[str] = None, callback: Optional
             return LanZouCloud.FAILED
         if file_name not in comic_file_id_matches:
             return LanZouCloud.ID_ERROR
+    file_id = comic_file_id_matches[file_name]
+    assert isinstance(file_id, int)
     if callback == 'def':
-        encrypted_buf_stat = lzy.download2buffer(comic_file_id_matches[file_name],
+        encrypted_buf_stat = lzy.download2buffer(file_id,
                                                  encrypted_buf,
                                                  callback=cb_maker(file_name))
     else:
         assert isinstance(callback, Callable)
-        encrypted_buf_stat = lzy.download2buffer(comic_file_id_matches[file_name],
+        encrypted_buf_stat = lzy.download2buffer(file_id,
                                                  encrypted_buf,
                                                  callback=callback)
     if encrypted_buf_stat:
