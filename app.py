@@ -93,7 +93,7 @@ def get_comic_pic(comic_id: int, pic_index: Optional[str]):
         comic_info = db.getComicInfo(comic_id)
         if not comic_info:
             return flask.abort(404)
-        comic_file = os.path.join(archived_comic_path, comic_info[3])
+        comic_file = os.path.join(archived_comic_path, comic_info[2])
     pic_list = getZipNamelist(comic_file)
     if isinstance(pic_list, str):
         return pic_list
@@ -140,7 +140,7 @@ def show_comic(comic_id):
         comic_info = db.getComicInfo(comic_id)
     if not comic_info:
         return flask.abort(404)
-    comic_file_path = os.path.join(archived_comic_path, comic_info[3])
+    comic_file_path = os.path.join(archived_comic_path, comic_info[2])
     if not os.path.exists(comic_file_path):
         return flask.redirect('/cache/status')
     pic_list = getZipNamelist(comic_file_path)
