@@ -48,7 +48,7 @@ def getComicContent(comic_id: int, pic_index: int) -> Optional[io.BytesIO]:
 
 def generateThumbnail(comic_id: int):
     with ComicDB() as db:
-        filename = db.getComicInfo(comic_id)[3]
+        filename = db.getComicInfo(comic_id)[2]
     file_path = os.path.join(archived_comic_path, filename)
     pic_list = getZipNamelist(file_path)
     assert isinstance(pic_list, list)

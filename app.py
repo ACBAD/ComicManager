@@ -59,7 +59,6 @@ def giveIcon():
 
 @app.route('/search_comic', methods=["POST"])
 def search_comic():
-    # 嘻嘻，只有根据tag搜索的功能
     query_args: dict = flask.request.get_json()
     target_tag = query_args.get('comic_tag')
     comic_author = query_args.get('author')
@@ -170,4 +169,4 @@ def get_cache_status():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=80)
+    app.run(host='0.0.0.0', port=5000)
