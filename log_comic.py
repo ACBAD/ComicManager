@@ -34,7 +34,7 @@ def log_tag(db_obj: Comic_DB.ComicDB, igroup_id: Union[None, int], hitomi_name) 
             print(add_result)
         return add_result
     else:
-        return db_query_result
+        return db_query_result  # getTagByHitomi returns a tuple
 
 id_iter = None
 task_list = []
@@ -102,16 +102,13 @@ while True:
             else:
                 print(f'tag添加失败: {tag_id}，请手动添加 {tag["tag"]}')
 
-        comic_authors = comic.authors
-        if not comic_authors:
-            comic_author = '佚名'
-        elif len(comic_authors) == 1:
-            comic_author = comic_authors[0]['artist']
+        comic_authors_raw = comic.authors
+        comic_authors_list = []
+        if not comic_authors_raw:
+            comic_authors_list.append('佚名')
         else:
-            comic_author = ''
-            for author in comic_authors:
-                comic_author += author['artist']
-                comic_author += ', '
+            for author in comic_authors_raw:
+                comic_authors_list.append(author['artist'])
 
         print('信息录入完成，开始获取源文件')
         if os.path.exists(os.path.join(raw_path, f'{hitomi_id}.zip')):
@@ -122,14 +119,16 @@ while True:
 
         if not download_name:
             print('下载失败')
+            continue
+
         comic_hash = get_file_hash(os.path.join(raw_path, download_name))
         hash_name = f'{comic_hash}.zip'
         comp_path = os.path.join(raw_path, hash_name)
         shutil.move(os.path.join(raw_path, download_name),
                     os.path.join(raw_path, hash_name))
 
-        comic_id = db.addComic(comic.title, comp_path, comic_author)
-        if comic_id < 0:
+        comic_id = db.addComic(comic.title, comp_path, authors=comic_authors_list)
+        if not comic_id or comic_id < 0:
             print(f'无法添加本子: {comic_id}')
             os.remove(comp_path)
             continue

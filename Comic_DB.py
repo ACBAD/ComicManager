@@ -80,6 +80,23 @@ class ComicDB:
                     PRIMARY KEY (ComicID, TagID)
                 )
                 ''')
+        self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS Sources (
+                    ID      INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Name    TEXT    NOT NULL UNIQUE,
+                    BaseUrl TEXT
+                )
+                ''')
+        self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS ComicSources (
+                    ComicID       INTEGER NOT NULL,
+                    SourceID      INTEGER NOT NULL,
+                    SourceComicID TEXT    NOT NULL,
+                    PRIMARY KEY (ComicID, SourceID),
+                    FOREIGN KEY (ComicID) REFERENCES Comics (ID) ON DELETE CASCADE,
+                    FOREIGN KEY (SourceID) REFERENCES Sources (ID) ON DELETE CASCADE
+                )
+                ''')
 
     def getAllComics(self) -> SuspendSQLQuery:
         builder = pypika.SQLLiteQuery.from_('Comics').select('ID').orderby('ID', order=pypika.Order.desc)
@@ -187,7 +204,31 @@ class ComicDB:
             result_dict[tag_name] = tag_id
         return result_dict
 
-    def addComic(self, title, filepath, authors: Optional[List[str]] = None, series=None, volume=None, check_file=True) -> Optional[int]:
+    def add_source(self, name: str, base_url: Optional[str] = None) -> Optional[int]:
+        try:
+            self.cursor.execute("INSERT INTO Sources (Name, BaseUrl) VALUES (?, ?)", (name, base_url))
+            self.conn.commit()
+            return self.cursor.lastrowid
+        except sqlite3.IntegrityError:
+            self.conn.rollback()
+            return None
+
+    def link_comic_to_source(self, comic_id: int, source_id: int, source_comic_id: str) -> bool:
+        try:
+            self.cursor.execute("INSERT INTO ComicSources (ComicID, SourceID, SourceComicID) VALUES (?, ?, ?)",
+                                (comic_id, source_id, source_comic_id))
+            self.conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            self.conn.rollback()
+            return False
+
+    def addComic(self, title, filepath,
+                 authors: Optional[List[str]] = None,
+                 series: Optional[str] = None,
+                 volume: Optional[int] = None,
+                 source: Optional[dict] = None,  # {'source_id': int, 'source_comic_id': str}
+                 check_file=True) -> Optional[int]:
         if series:
             if not volume:
                 return -1
@@ -213,7 +254,10 @@ class ComicDB:
                     if author_id_result:
                         author_id = author_id_result[0]
                         # Link author to comic
-                        self.cursor.execute("INSERT INTO ComicAuthors (ComicID, AuthorID) VALUES (?, ?)", (comic_id, author_id))
+                        self.cursor.execute("INSERT INTO ComicAuthors (ComicID, AuthorID) VALUES (?, ?)",
+                                            (comic_id, author_id))
+            if source and comic_id:
+                self.link_comic_to_source(comic_id, source['source_id'], source['source_comic_id'])
 
             self.conn.commit()
             return comic_id
@@ -263,7 +307,8 @@ class ComicDB:
                 author_id_result = self.cursor.fetchone()
                 if author_id_result:
                     author_id = author_id_result[0]
-                    self.cursor.execute("INSERT INTO ComicAuthors (ComicID, AuthorID) VALUES (?, ?)", (comic_id, author_id))
+                    self.cursor.execute("INSERT INTO ComicAuthors (ComicID, AuthorID) VALUES (?, ?)",
+                                        (comic_id, author_id))
 
         self.conn.commit()
         return ''
