@@ -141,7 +141,7 @@ function createComic(item){
     comic_details.appendChild(comic_title);
     let comic_author = document.createElement('button');
     comic_author.addEventListener("click", submitAuthorSearch);
-    comic_author.textContent = item[2];
+    comic_author.textContent = item[5];
     comic_details.appendChild(comic_author);
     let comic_tags = document.createElement('div');
     comic_tags.className = 'tag-info';
