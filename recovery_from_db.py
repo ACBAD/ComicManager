@@ -1,10 +1,14 @@
 import os
 from Comic_DB import ComicDB
 from hitomiv2 import Hitomi
+import sys
 
 base_path = 'archived_comics'
 
-hitomi = Hitomi(proxy_settings={'http': 'http://127.0.0.1:10809', 'https': 'http://127.0.0.1:10809'})
+if len(sys.argv) > 1 and sys.argv[1] == 'no_proxy':
+    hitomi = Hitomi()
+else:
+    hitomi = Hitomi(proxy_settings={'http': 'http://127.0.0.1:10809', 'https': 'http://127.0.0.1:10809'})
 
 with ComicDB() as db:
     all_comics_query = db.getAllComics()
