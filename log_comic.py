@@ -3,7 +3,7 @@ import hashlib
 import os.path
 import sys
 import re
-from typing import Union
+from typing import Union, Optional
 from hitomiv2 import Hitomi
 import Comic_DB
 from site_utils import archived_comic_path
@@ -35,6 +35,15 @@ def log_tag(db_obj: Comic_DB.ComicDB, igroup_id: Union[None, int], hitomi_name) 
     else:
         return db_query_result  # getTagByHitomi returns a tuple
 
+
+def extract_hitomi_id(hitomi_url: str) -> Optional[str]:
+    __match = re.search(r'(\d+)\.html$', hitomi_url)
+    if __match:
+        print('检测到HitomiURL')
+        print(f'提取出的目标ID为:{__match.group(1)}')
+        return __match.group(1)
+    return None
+
 id_iter = None
 task_list = []
 raw_file_list = os.listdir(raw_path)
@@ -50,22 +59,22 @@ if len(task_list) > 0:
     id_iter = iter(task_list)
 while True:
     try:
-        hitomi_id = input('输入hitomi id: ') if id_iter is None else next(id_iter)
+        user_input = input('输入hitomi id: ') if id_iter is None else next(id_iter)
     except StopIteration:
         print('任务列表结束')
         id_iter = None
         continue
-    if not hitomi_id:
+    if not user_input:
         print('结束录入')
         break
-    __match = re.search(r'(\d+)\.html$', hitomi_id)
-    if __match:
-        print('检测到HitomiURL')
-        print(f'提取出的目标ID为:{__match.group(1)}')
-        hitomi_id = __match.group(1)
-    if not hitomi_id.isdigit():
-        print('输入错误，重新输入')
-        continue
+    if user_input.isdigit():
+        hitomi_id = user_input
+    else:
+        extract_result = extract_hitomi_id(user_input)
+        if not extract_result:
+            print('输入错误')
+            continue
+        hitomi_id = extract_result
     comic = hitomi.get_comic(hitomi_id)
     print(f'本子名: {comic.title}')
     comic_tags_list = []
