@@ -28,7 +28,6 @@ with ComicDB() as db:
         if not source_comic_id:
             print(f'ID:{comic_id} 无源ID')
             continue
-        print('')
         print(f"检索到ID:{comic_id} 的源ID: {source_comic_id}.")
         try:
             comic = hitomi.get_comic(source_comic_id)
