@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS ComicSources (
 
 -- 为 ComicSources 表中的 SourceID 创建索引
 CREATE INDEX IF NOT EXISTS idx_comicsources_source_id ON ComicSources (SourceID);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_comicsources_comicsource_id ON ComicSources (SourceComicID);
 
 -- ----------------------------
 -- The rest of the tables (Tags, TagGroups, ComicTags)

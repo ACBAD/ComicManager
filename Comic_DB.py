@@ -103,8 +103,9 @@ class ComicDB:
         return SuspendSQLQuery(self.cursor, builder)
 
     def searchComicByTags(self, *tags) -> SuspendSQLQuery:
-        builder = (pypika.SQLLiteQuery.from_('ComicTags')
-                   .select('ComicID')
+        ComicTags = pypika.Table('ComicTags')
+        builder = (pypika.SQLLiteQuery.from_(ComicTags)
+                   .select(ComicTags.ComicID)
                    .where(pypika.Field('TagID').isin(tags))
                    .orderby('ComicID', order=pypika.Order.desc))
         return SuspendSQLQuery(self.cursor, builder)
@@ -129,6 +130,18 @@ class ComicDB:
                    .where(Authors.Name == author_name)
                    .orderby(ComicAuthors.ComicID, order=pypika.Order.desc))
         return SuspendSQLQuery(self.cursor, builder)
+
+    def searchComicBySource(self, source_comic_id, source_id: int = None):
+        if source_id:
+            source_query = "SELECT ComicID FROM ComicSources WHERE SourceComicID = ? AND SourceID = ?"
+            self.cursor.execute(source_query, (source_comic_id, source_id))
+        else:
+            source_query = "SELECT ComicID FROM ComicSources WHERE SourceComicID = ?"
+            self.cursor.execute(source_query, (source_comic_id,))
+        source_result = self.cursor.fetchone()
+        if source_result:
+            return source_result[0]
+        return None
 
     def getComicInfo(self, comic_id: int) -> tuple:
         # Fetch comic details
@@ -156,6 +169,14 @@ class ComicDB:
 
         # Combine results: (ID, Title, FilePath, SeriesName, VolumeNumber, Authors, Tags)
         return comic_result + (author_string, tags_tuple)
+
+    def getComicSource(self, comic_id):
+        query = 'SELECT SourceComicID FROM ComicSources WHERE ComicID = ?'
+        self.cursor.execute(query, (comic_id,))
+        result = self.cursor.fetchone()
+        if result:
+            return result[0]
+        return None
 
     def searchComicByFile(self, filename):
         query = 'SELECT * FROM Comics WHERE FilePath = ?'
@@ -417,4 +438,4 @@ class ComicDB:
 
 if __name__ == '__main__':
     with ComicDB() as db:
-        print(db.getComicInfo(1000))
+        print(db.searchComicBySource(3574528))
