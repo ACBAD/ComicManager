@@ -137,6 +137,12 @@ while True:
             link_result = db.linkTag2Comic(comic_id, tag)
             if link_result < 0:
                 print(f'tag {tag}链接失败，错误id: {link_result}')
+        print('开始链接源')
+        link_result = db.linkComic2Source(comic_id, 1, hitomi_id)
+        if link_result:
+            print(f'成功将本子与源ID{hitomi_id}链接')
+        else:
+            print('链接失败')
         print('录入完成，移入完成文件夹')
         shutil.move(comp_path, os.path.join(archived_comic_path, hash_name))
         print('写入下载记录')

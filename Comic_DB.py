@@ -204,7 +204,7 @@ class ComicDB:
             result_dict[tag_name] = tag_id
         return result_dict
 
-    def add_source(self, name: str, base_url: Optional[str] = None) -> Optional[int]:
+    def addSource(self, name: str, base_url: Optional[str] = None) -> Optional[int]:
         try:
             self.cursor.execute("INSERT INTO Sources (Name, BaseUrl) VALUES (?, ?)", (name, base_url))
             self.conn.commit()
@@ -213,7 +213,7 @@ class ComicDB:
             self.conn.rollback()
             return None
 
-    def link_comic_to_source(self, comic_id: int, source_id: int, source_comic_id: str) -> bool:
+    def linkComic2Source(self, comic_id: int, source_id: int, source_comic_id: str) -> bool:
         try:
             self.cursor.execute("INSERT INTO ComicSources (ComicID, SourceID, SourceComicID) VALUES (?, ?, ?)",
                                 (comic_id, source_id, source_comic_id))
@@ -257,7 +257,7 @@ class ComicDB:
                         self.cursor.execute("INSERT INTO ComicAuthors (ComicID, AuthorID) VALUES (?, ?)",
                                             (comic_id, author_id))
             if source and comic_id:
-                self.link_comic_to_source(comic_id, source['source_id'], source['source_comic_id'])
+                self.linkComic2Source(comic_id, source['source_id'], source['source_comic_id'])
 
             self.conn.commit()
             return comic_id
