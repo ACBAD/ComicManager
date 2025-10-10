@@ -144,7 +144,4 @@ while True:
             print('链接失败')
         print('录入完成，移入完成文件夹')
         shutil.move(comp_path, os.path.join(archived_comic_path, hash_name))
-        print('写入下载记录')
-        with open('hitomi_id.log', 'a') as f:
-            f.write(f" {hitomi_id} ")
 print('录入完成')
