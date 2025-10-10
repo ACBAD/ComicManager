@@ -9,8 +9,7 @@ import Comic_DB
 from site_utils import archived_comic_path
 
 raw_path = 'raw_comic'
-hitomi = Hitomi(proxy_settings={'http': 'http://127.0.0.1:10809', 'https': 'http://127.0.0.1:10809'},
-                storage_path_fmt=raw_path, debug_fmt=False)
+hitomi = Hitomi(storage_path_fmt=raw_path, debug_fmt=False)
 
 
 def get_file_hash(file_path):
