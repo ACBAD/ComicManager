@@ -75,6 +75,9 @@ while True:
             print('输入错误')
             continue
         hitomi_id = extract_result
+    if db.searchComicBySource(hitomi_id):
+        print('已存在')
+        continue
     comic = hitomi.get_comic(hitomi_id)
     print(f'本子名: {comic.title}')
     comic_tags_list = []
