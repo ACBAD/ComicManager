@@ -37,7 +37,7 @@ if __name__ == '__main__':
     print('---------------------------Comic Backup Manager---------------------------')
     print(f'Now is {datetime.datetime.now()}')
     print('Backing up Database')
-    if cf_comic.uploadComic('Comics.db', recovery=True):
+    if cf_comic.uploadComic('old_Comics.db', recovery=True):
         print('Backing up Database Complete')
     else:
         print('Backing up Database Failed')

@@ -25,13 +25,13 @@ function updateDropdownList() {
         type: 'GET',
         url: '/get_tags/' + groupSelector.value,
         success: function (response){
-            dropdownInput.placeholder = '更新完成, 输入tag部分以选择';
             for (const [tag_name, tag_id] of Object.entries(response)){
                 let newOption = document.createElement('li');
                 newOption.setAttribute('tag-id', tag_id.toString());
                 newOption.textContent = tag_name;
                 dropdownList.appendChild(newOption);
             }
+            dropdownInput.placeholder = '更新完成, 输入tag部分以选择';
         },
         error: function (){
             dropdownInput.placeholder = '更新失败';

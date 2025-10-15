@@ -2,8 +2,8 @@ import sqlite3
 import os
 
 # --- 配置 ---
-OLD_DB_PATH = 'Comics.db'  # 你的旧数据库文件名
-NEW_DB_PATH = 'new_Comics.db'  # 将要创建的新数据库文件名
+OLD_DB_PATH = 'old_Comics.db'  # 你的旧数据库文件名
+NEW_DB_PATH = 'Comics.db'  # 将要创建的新数据库文件名
 SCHEMA_PATH = 'Comics_schema.sql'  # 包含上述优化版 Schema 的 SQL 文件名
 
 
