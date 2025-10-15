@@ -81,6 +81,7 @@ $().ready(function () {
     const now_page_bottom_item = document.getElementById('now-page-bottom');
     const total_page_bottom_item = document.getElementById('total-page-bottom');
     const page_sync_observer = new MutationObserver(function(mutations) {
+        // noinspection JSUnusedLocalSymbols
         mutations.forEach(mutation => {
             now_page_bottom_item.textContent = now_page_item.textContent;
             total_page_bottom_item.textContent = total_page_item.textContent;
@@ -88,8 +89,7 @@ $().ready(function () {
     });
     page_sync_observer.observe(now_page_item, {characterData: true, subtree:true, childList:true});
     page_sync_observer.observe(total_page_item, {characterData: true, subtree:true, childList:true});
-});
-let searchArgs = {comic_tag: 0, author: '', target_page: null};
+})
 
 function switchPage(event){
     if(event.target.id === 'page-step'){return;}
@@ -97,6 +97,7 @@ function switchPage(event){
     const totalPage = parseInt(document.getElementById('total-page').textContent, 10);
     const pageStep = parseInt(document.getElementById('page-step').value, 10) ?
         parseInt(document.getElementById('page-step').value, 10) : 1;
+    let searchArgs = {comic_tag: 0, author: '', target_page: null};
     if (event.target.id.startsWith('prev-page-button')){
         if(nowPage <= pageStep)return;
         searchArgs.target_page = nowPage - pageStep;
@@ -108,10 +109,11 @@ function switchPage(event){
     else{
         alert('不是翻页按钮，无法应用功能');
     }
-    requestComics();
+    requestComics(searchArgs);
 }
 
 function updateSearchArgs(){
+    let searchArgs = {comic_tag: 0, author: '', target_page: null};
     const tagName = document.getElementById('dropdown-input').value;
     const tagSelectList = document.getElementById('dropdown-list');
     let tagID = 0;
@@ -121,7 +123,13 @@ function updateSearchArgs(){
     }
     searchArgs.author = document.getElementById('comic-input').value;
     searchArgs.comic_tag = tagID;
+    return searchArgs;
 }
+
+/**
+ *
+ * @param {Array}item
+ */
 
 function createComic(item){
     console.log(item);
@@ -155,7 +163,15 @@ function createComic(item){
     comicsContainer.appendChild(comic_item);
 }
 
-function requestComics(){
+/**
+ * @typedef {{total_count: number, comics_info: Array<Array>}} ComicInfos
+ */
+
+/**
+ *
+ * @param searchArgs
+ */
+function requestComics(searchArgs){
     $.ajax({
         type: 'POST',
         url: '/search_comic',
@@ -176,7 +192,7 @@ function requestComics(){
 }
 
 function submitSearchArgs(){
+    let searchArgs = updateSearchArgs();
     searchArgs.target_page = 1;
-    updateSearchArgs();
-    requestComics();
+    requestComics(searchArgs);
 }
