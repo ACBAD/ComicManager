@@ -178,7 +178,7 @@ class ComicDB:
             return result[0]
         return None
 
-    def searchComicByFile(self, filename):
+    def searchComicByFile(self, filename: str):
         query = 'SELECT * FROM Comics WHERE FilePath = ?'
         self.cursor.execute(query, (filename,))
         results = self.cursor.fetchone()
@@ -438,4 +438,7 @@ class ComicDB:
 
 if __name__ == '__main__':
     with ComicDB() as db:
-        print(db.searchComicBySource(3574528))
+        dismatch_files = db.getWanderingFile('archived_comics')
+        for file in dismatch_files:
+            print(f'现在正删除 {file}')
+            os.remove('archived_comics/' + file)
