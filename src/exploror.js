@@ -19,6 +19,7 @@ function updateDropdownList() {
     const groupSelector = document.getElementById('category-select');
     const dropdownList = document.getElementById('dropdown-list');
     const dropdownInput = document.getElementById('dropdown-input');
+    dropdownInput.placeholder = '等待更新';
     dropdownList.innerHTML = '';
     $.ajax({
         type: 'GET',
