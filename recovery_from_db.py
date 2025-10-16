@@ -3,13 +3,26 @@ from Comic_DB import ComicDB
 from hitomiv2 import Hitomi
 import sys
 import shutil
+import requests
 
-base_path = 'archived_comics'
+BASE_PATH = 'archived_comics'
 
-if len(sys.argv) > 1 and sys.argv[1] == 'no_proxy':
-    hitomi = Hitomi()
-else:
-    hitomi = Hitomi(proxy_settings={'http': 'http://127.0.0.1:10809', 'https': 'http://127.0.0.1:10809'})
+HTTP_PROXY = os.environ.get('HTTP_PROXY', None)
+HTTPS_PROXY = os.environ.get('HTTPS_PROXY', None)
+
+REMOTE_FILE = None
+
+if len(sys.argv) > 1:
+    if sys.argv[1].startswith('http'):
+        REMOTE_FILE = sys.argv[1]
+
+
+hitomi = Hitomi(proxy_settings={'http': HTTPS_PROXY, 'https': HTTPS_PROXY})
+
+if REMOTE_FILE:
+    response = requests.get(REMOTE_FILE)
+    with open(REMOTE_FILE.split('/')[-1], 'wb') as f:
+        f.write(response.content)
 
 with ComicDB() as db:
     all_comics_query = db.getAllComics()
@@ -21,7 +34,7 @@ with ComicDB() as db:
             print(f"无此ID: {comic_id}")
             continue
         file_path = comic_info[2]
-        local_path = os.path.join(base_path, file_path)
+        local_path = os.path.join(BASE_PATH, file_path)
         if os.path.exists(local_path):
             continue
         print(f"ID:{comic_id} 本地文件不存在: {file_path}")

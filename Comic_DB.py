@@ -427,12 +427,12 @@ class ComicDB:
         return not_exist_files, file_match_ids
 
     def getWanderingFile(self, base_path):
-        files = os.listdir(base_path)
+        test_files = os.listdir(base_path)
         wandering_files = set()
-        for file in files:
-            result = self.searchComicByFile(file)
+        for test_file in test_files:
+            result = self.searchComicByFile(test_file)
             if not result:
-                wandering_files.add(file)
+                wandering_files.add(test_file)
         return wandering_files
 
 
