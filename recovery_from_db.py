@@ -2,6 +2,7 @@ import os
 from Comic_DB import ComicDB
 from hitomiv2 import Hitomi
 import sys
+import shutil
 
 base_path = 'archived_comics'
 
@@ -34,7 +35,7 @@ with ComicDB() as db:
             download_path = comic.download(max_threads=5)
             if download_path:
                 # Rename and move the downloaded file
-                os.rename(download_path, local_path)
+                shutil.move(download_path, local_path)
                 print(f"ID:{comic_id} 文件还原成功: {file_path}")
             else:
                 print(f"ID:{comic_id} 文件还原失败, 源ID:{source_comic_id}")
