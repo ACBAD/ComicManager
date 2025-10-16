@@ -13,16 +13,20 @@ HTTPS_PROXY = os.environ.get('HTTPS_PROXY', None)
 REMOTE_FILE = None
 
 if len(sys.argv) > 1:
+    print('检测到命令行参数')
     if sys.argv[1].startswith('http'):
+        print('成功解析命令行参数为URL')
         REMOTE_FILE = sys.argv[1]
 
 
 hitomi = Hitomi(proxy_settings={'http': HTTPS_PROXY, 'https': HTTPS_PROXY})
 
 if REMOTE_FILE:
+    print('检测到远程文件已定义')
     response = requests.get(REMOTE_FILE)
     with open(REMOTE_FILE.split('/')[-1], 'wb') as f:
         f.write(response.content)
+    print('数据库下载完成')
 
 with ComicDB() as db:
     all_comics_query = db.getAllComics()
