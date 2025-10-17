@@ -5,6 +5,8 @@ import pypika
 import hashlib
 import sys
 
+from log_comic import user_input
+
 
 def getFileHash(file_path):
     return hashlib.md5(open(file_path, 'rb').read()).hexdigest()
@@ -483,6 +485,9 @@ if __name__ == '__main__':
     with ComicDB() as db:
         if first_arg == 'clean':
             dismatch_files = db.getWanderingFile('archived_comics')
+            user_input_g = input(f'将删除{len(dismatch_files)}个文件, 确定?')
+            if user_input_g != 'y':
+                exit(0)
             for file in dismatch_files:
                 print(f'现在正删除 {file}')
                 os.remove('archived_comics/' + file)
