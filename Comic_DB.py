@@ -3,6 +3,7 @@ import sqlite3
 from typing import Optional, List
 import pypika
 import hashlib
+import sys
 
 
 def getFileHash(file_path):
@@ -462,8 +463,16 @@ class ComicDB:
 
 
 if __name__ == '__main__':
+    if len(sys.argv) <= 1:
+        print('缺少参数')
+        exit(0)
+    first_arg = sys.argv[1]
     with ComicDB() as db:
-        dismatch_files = db.getWanderingFile('archived_comics')
-        for file in dismatch_files:
-            print(f'现在正删除 {file}')
-            os.remove('archived_comics/' + file)
+        if first_arg == 'clean':
+            dismatch_files = db.getWanderingFile('archived_comics')
+            for file in dismatch_files:
+                print(f'现在正删除 {file}')
+                os.remove('archived_comics/' + file)
+        elif first_arg == 'fix_hash':
+            db.updateFileHash('archived_comics')
+
