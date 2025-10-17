@@ -15,7 +15,9 @@ class SuspendSQLQuery:
 
 
 class ComicDB:
-    def __init__(self, db_file_name: str = 'Comics.db'):  # Changed default to Comics.db
+    def __init__(self, db_file_name: str = None):  # Changed default to Comics.db
+        if not db_file_name:
+            db_file_name = 'Comics.db'
         self.conn = sqlite3.connect(db_file_name)
         self.cursor = self.conn.cursor()
         self.init_db()

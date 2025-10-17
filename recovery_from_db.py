@@ -20,15 +20,16 @@ if len(sys.argv) > 1:
 
 
 hitomi = Hitomi(proxy_settings={'http': HTTPS_PROXY, 'https': HTTPS_PROXY})
-
+REMOTE_FILENAME = None
 if REMOTE_FILE:
     print('检测到远程文件已定义')
+    REMOTE_FILENAME = REMOTE_FILE.split('/')[-1]
     response = requests.get(REMOTE_FILE)
-    with open(REMOTE_FILE.split('/')[-1], 'wb') as f:
+    with open(REMOTE_FILENAME, 'wb') as f:
         f.write(response.content)
     print('数据库下载完成')
 
-with ComicDB() as db:
+with ComicDB(REMOTE_FILENAME) as db:
     all_comics_query = db.getAllComics()
     all_comics = all_comics_query.submit()
     for comic_row in all_comics:
