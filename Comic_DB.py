@@ -5,8 +5,6 @@ import pypika
 import hashlib
 import sys
 
-from log_comic import user_input
-
 
 def getFileHash(file_path):
     return hashlib.md5(open(file_path, 'rb').read()).hexdigest()
