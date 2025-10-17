@@ -454,7 +454,7 @@ class ComicDB:
             if file_hash == file_name:
                 continue
             print(f'文件{test_file}哈希{file_hash}不匹配')
-            if f'{file_name}.{file_ext}' in test_files:
+            if f'{file_hash}.{file_ext}' in test_files:
                 print(f'检测到哈希冲突, 跳过')
                 continue
             new_file_path = os.path.join(base_path, f'{file_name}.{file_ext}')
