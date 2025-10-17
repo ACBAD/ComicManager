@@ -466,7 +466,7 @@ def updateFileHash(idb: ComicDB, base_path: str):
             print(f'文件{test_file}未在数据库记录')
             continue
         try:
-            idb.editComic(comic_id, filepath=hash_name)
+            idb.editComic(comic_id, filepath=hash_name, verify_file=False)
         except sqlite3.IntegrityError as ie:
             print(f'更新数据库时发生错误{ie}, 跳过文件')
             continue
