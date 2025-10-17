@@ -12,8 +12,12 @@ raw_path = 'raw_comic'
 hitomi = Hitomi(storage_path_fmt=raw_path, debug_fmt=False)
 
 
-def get_file_hash(file_path):
-    return hashlib.md5(open(file_path, 'rb').read()).hexdigest()
+def get_file_hash(file_path: str, chunk_size: int = 8192):
+    hash_md5 = hashlib.md5()
+    with open(file_path, 'rb') as f:
+        while chunk := f.read(chunk_size):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
 
 
 def log_tag(db_obj: Comic_DB.ComicDB, igroup_id: Union[None, int], hitomi_name) -> int:
