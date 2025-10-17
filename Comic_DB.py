@@ -452,7 +452,6 @@ class ComicDB:
             if len(test_file.split('.')) < 2:
                 print(f'暂不支持无后缀文件, 跳过')
                 continue
-            file_name = test_file.split('.')[-2]
             file_ext = test_file.split('.')[-1]
             hash_name = f'{file_hash}.{file_ext}'
             if test_file == hash_name:
