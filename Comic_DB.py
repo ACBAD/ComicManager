@@ -299,7 +299,8 @@ class ComicDB:
                   filepath: Optional[str] = None,
                   authors: Optional[List[str]] = None,
                   series: Optional[str] = None,
-                  volume: Optional[int] = None) -> Optional[int]:
+                  volume: Optional[int] = None,
+                  verify_file: bool = True) -> Optional[int]:
         # Update basic comic info
         update_fields = []
         parameters = []
@@ -307,7 +308,7 @@ class ComicDB:
             update_fields.append('Title = ?')
             parameters.append(title)
         if filepath is not None:
-            if not os.path.exists(filepath):
+            if verify_file and not os.path.exists(filepath):
                 return -1
             update_fields.append('FilePath = ?')
             parameters.append(os.path.basename(filepath))
