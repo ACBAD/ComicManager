@@ -2,6 +2,11 @@ import os.path
 import sqlite3
 from typing import Optional, List
 import pypika
+import hashlib
+
+
+def getFileHash(file_path):
+    return hashlib.md5(open(file_path, 'rb').read()).hexdigest()
 
 
 class SuspendSQLQuery:
@@ -428,7 +433,7 @@ class ComicDB:
                 file_match_ids.append(comic_id)
         return not_exist_files, file_match_ids
 
-    def getWanderingFile(self, base_path):
+    def getWanderingFile(self, base_path: str):
         test_files = os.listdir(base_path)
         wandering_files = set()
         for test_file in test_files:
@@ -436,6 +441,24 @@ class ComicDB:
             if not result:
                 wandering_files.add(test_file)
         return wandering_files
+
+    @staticmethod
+    def updateFileHash(base_path: str):
+        test_files = os.listdir(base_path)
+        for test_file in test_files:
+            file_path = os.path.join(base_path, test_file)
+            file_hash = getFileHash(file_path)
+            file_name = test_file.split('.')[-2]
+            file_ext = test_file.split('.')[-1]
+            if file_hash == file_name:
+                continue
+            print(f'文件{test_file}哈希{file_hash}不匹配')
+            if f'{file_name}.{file_ext}' in test_files:
+                print(f'检测到哈希冲突, 跳过')
+                continue
+            new_file_path = os.path.join(base_path, f'{file_name}.{file_ext}')
+            os.rename(file_path, new_file_path)
+            print(f'文件{test_file}重命名为{file_name}.{file_ext}')
 
 
 if __name__ == '__main__':
