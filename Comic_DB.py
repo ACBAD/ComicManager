@@ -186,7 +186,7 @@ class ComicDB:
             return result[0]
         return None
 
-    def searchComicByFile(self, filename: str):
+    def searchComicByFile(self, filename: str) -> Optional[int]:
         query = 'SELECT * FROM Comics WHERE FilePath = ?'
         self.cursor.execute(query, (filename,))
         results = self.cursor.fetchone()
@@ -299,7 +299,7 @@ class ComicDB:
                   filepath: Optional[str] = None,
                   authors: Optional[List[str]] = None,
                   series: Optional[str] = None,
-                  volume: Optional[int] = None) -> str:
+                  volume: Optional[int] = None) -> Optional[int]:
         # Update basic comic info
         update_fields = []
         parameters = []
@@ -308,7 +308,7 @@ class ComicDB:
             parameters.append(title)
         if filepath is not None:
             if not os.path.exists(filepath):
-                return 'File does not exist'
+                return -1
             update_fields.append('FilePath = ?')
             parameters.append(os.path.basename(filepath))
         if series is not None:
@@ -316,7 +316,7 @@ class ComicDB:
             parameters.append(series)
         if volume is not None:
             if not str(volume).isdigit():
-                return 'Volume must be an integer'
+                return -2
             update_fields.append('VolumeNumber = ?')
             parameters.append(volume)
 
@@ -338,9 +338,8 @@ class ComicDB:
                     author_id = author_id_result[0]
                     self.cursor.execute("INSERT INTO ComicAuthors (ComicID, AuthorID) VALUES (?, ?)",
                                         (comic_id, author_id))
-
         self.conn.commit()
-        return ''
+        return 0
 
     def deleteComic(self, comic_id: int) -> int:
         query = 'DELETE FROM Comics WHERE ID = ?'
@@ -443,8 +442,7 @@ class ComicDB:
                 wandering_files.add(test_file)
         return wandering_files
 
-    @staticmethod
-    def updateFileHash(base_path: str):
+    def updateFileHash(self, base_path: str):
         test_files = os.listdir(base_path)
         for test_file in test_files:
             file_path = os.path.join(base_path, test_file)
@@ -461,6 +459,16 @@ class ComicDB:
                 print(f'检测到哈希冲突, 跳过')
                 continue
             new_file_path = os.path.join(base_path, hash_name)
+            comic_id = self.searchComicByFile(test_file)
+            if not comic_id:
+                print(f'文件{test_file}未在数据库记录')
+                continue
+            try:
+                self.editComic(comic_id, filepath=hash_name)
+            except sqlite3.IntegrityError as ie:
+                print(f'更新数据库时发生错误{ie}, 跳过文件')
+                continue
+            print(f'数据库文件{test_file}更新为{hash_name}')
             os.rename(file_path, new_file_path)
             print(f'文件{test_file}重命名为{hash_name}')
 
