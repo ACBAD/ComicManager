@@ -475,4 +475,3 @@ if __name__ == '__main__':
                 os.remove('archived_comics/' + file)
         elif first_arg == 'fix_hash':
             db.updateFileHash('archived_comics')
-
