@@ -443,35 +443,36 @@ class ComicDB:
                 wandering_files.add(test_file)
         return wandering_files
 
-    def updateFileHash(self, base_path: str):
-        test_files = os.listdir(base_path)
-        for test_file in test_files:
-            file_path = os.path.join(base_path, test_file)
-            file_hash = getFileHash(file_path)
-            if len(test_file.split('.')) < 2:
-                print(f'暂不支持无后缀文件, 跳过')
-                continue
-            file_ext = test_file.split('.')[-1]
-            hash_name = f'{file_hash}.{file_ext}'
-            if test_file == hash_name:
-                continue
-            print(f'文件{test_file}哈希{file_hash}不匹配')
-            if hash_name in test_files:
-                print(f'检测到哈希冲突, 跳过')
-                continue
-            new_file_path = os.path.join(base_path, hash_name)
-            comic_id = self.searchComicByFile(test_file)
-            if not comic_id:
-                print(f'文件{test_file}未在数据库记录')
-                continue
-            try:
-                self.editComic(comic_id, filepath=hash_name)
-            except sqlite3.IntegrityError as ie:
-                print(f'更新数据库时发生错误{ie}, 跳过文件')
-                continue
-            print(f'数据库文件{test_file}更新为{hash_name}')
-            os.rename(file_path, new_file_path)
-            print(f'文件{test_file}重命名为{hash_name}')
+
+def updateFileHash(idb: ComicDB, base_path: str):
+    test_files = os.listdir(base_path)
+    for test_file in test_files:
+        file_path = os.path.join(base_path, test_file)
+        file_hash = getFileHash(file_path)
+        if len(test_file.split('.')) < 2:
+            print(f'暂不支持无后缀文件, 跳过')
+            continue
+        file_ext = test_file.split('.')[-1]
+        hash_name = f'{file_hash}.{file_ext}'
+        if test_file == hash_name:
+            continue
+        print(f'文件{test_file}哈希{file_hash}不匹配')
+        if hash_name in test_files:
+            print(f'检测到哈希冲突, 跳过')
+            continue
+        new_file_path = os.path.join(base_path, hash_name)
+        comic_id = idb.searchComicByFile(test_file)
+        if not comic_id:
+            print(f'文件{test_file}未在数据库记录')
+            continue
+        try:
+            idb.editComic(comic_id, filepath=hash_name)
+        except sqlite3.IntegrityError as ie:
+            print(f'更新数据库时发生错误{ie}, 跳过文件')
+            continue
+        print(f'数据库文件{test_file}更新为{hash_name}')
+        os.rename(file_path, new_file_path)
+        print(f'文件{test_file}重命名为{hash_name}')
 
 
 if __name__ == '__main__':
@@ -486,4 +487,4 @@ if __name__ == '__main__':
                 print(f'现在正删除 {file}')
                 os.remove('archived_comics/' + file)
         elif first_arg == 'fix_hash':
-            db.updateFileHash('archived_comics')
+            updateFileHash(db, 'archived_comics')
