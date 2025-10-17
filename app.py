@@ -57,6 +57,11 @@ def giveIcon():
     return flask.send_from_directory('.', 'favicon.ico')
 
 
+@app.route('/Comics.db')
+def send_comic_db():
+    return flask.send_from_directory('.', 'Comics.db')
+
+
 @app.route('/search_comic', methods=["POST"])
 def search_comic():
     query_args: dict = flask.request.get_json()
