@@ -449,17 +449,21 @@ class ComicDB:
         for test_file in test_files:
             file_path = os.path.join(base_path, test_file)
             file_hash = getFileHash(file_path)
+            if len(test_file.split('.')) < 2:
+                print(f'暂不支持无后缀文件, 跳过')
+                continue
             file_name = test_file.split('.')[-2]
             file_ext = test_file.split('.')[-1]
-            if file_hash == file_name:
+            hash_name = f'{file_hash}.{file_ext}'
+            if test_file == hash_name:
                 continue
             print(f'文件{test_file}哈希{file_hash}不匹配')
-            if f'{file_hash}.{file_ext}' in test_files:
+            if hash_name in test_files:
                 print(f'检测到哈希冲突, 跳过')
                 continue
-            new_file_path = os.path.join(base_path, f'{file_name}.{file_ext}')
+            new_file_path = os.path.join(base_path, hash_name)
             os.rename(file_path, new_file_path)
-            print(f'文件{test_file}重命名为{file_name}.{file_ext}')
+            print(f'文件{test_file}重命名为{hash_name}')
 
 
 if __name__ == '__main__':
