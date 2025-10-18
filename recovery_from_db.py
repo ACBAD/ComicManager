@@ -1,7 +1,18 @@
 import os
+try:
+    from site_utils import getFileHash
+except ImportError:
+    print('非网站环境,fallback至默认哈希函数')
+    import hashlib
+
+    def getFileHash(file_path: str, chunk_size: int = 8192):
+        hash_md5 = hashlib.md5()
+        with open(file_path, 'rb') as fi:
+            while chunk := fi.read(chunk_size):
+                hash_md5.update(chunk)
+        return hash_md5.hexdigest()
 from Comic_DB import ComicDB
 from hitomiv2 import Hitomi
-from log_comic import log_comic
 import sys
 import shutil
 import requests
@@ -40,7 +51,7 @@ def recoveryFromLocalDB(db: ComicDB):
             continue
         print(f"检索到ID:{comic_id} 的源ID: {source_comic_id}.")
         try:
-            comic = hitomi.get_comic(source_comic_id)
+            comic = hitomi_instance.get_comic(source_comic_id)
             download_path = comic.download(max_threads=5)
             if download_path:
                 # Rename and move the downloaded file
@@ -52,15 +63,46 @@ def recoveryFromLocalDB(db: ComicDB):
             print(f"An error occurred while downloading comic with source ID {source_comic_id}: {e}")
 
 
-def updateLocalDB(remote_db: ComicDB, local_db: ComicDB):
+def updateFromRemoteDB(remote_db: ComicDB, local_db: ComicDB):
     local_comic_ids = {result[0] for result in local_db.getAllComicsSQL().submit()}
     remote_comic_ids = {result[0] for result in remote_db.getAllComicsSQL().submit()}
     diff_ids = remote_comic_ids - local_comic_ids
     for comic_id in diff_ids:
         hitomi_id = remote_db.getComicSource(comic_id)
-        log_comic(hitomi, local_db, hitomi_id)
+        if not hitomi_id:
+            print(f'ID:{comic_id} 无源ID')
+            continue
+        print(f"检索到ID:{comic_id} 的源ID: {hitomi_id}.")
+        comic = hitomi_instance.get_comic(hitomi_id)
+        download_filename: str = comic.download(max_threads=5)
+        # download_filename = 'test.zip'  # DEBUG
 
-hitomi = Hitomi(storage_path_fmt='raw_comic', proxy_settings={'http': HTTPS_PROXY, 'https': HTTPS_PROXY})
+        if not download_filename:
+            print('下载失败')
+            continue
+        raw_comic_path = os.path.join(hitomi_instance.storage_path, download_filename)
+        filehash = getFileHash(raw_comic_path)
+        hashname = f'{filehash}.zip'
+        planning_comic_path = os.path.join(BASE_PATH, hashname)
+        shutil.move(raw_comic_path, planning_comic_path)
+        comic_info = remote_db.getComicInfo(comic_id)
+        comic_authors = remote_db.getComicAuthors(comic_id)
+        db_result = local_db.addComic(comic_info[1], planning_comic_path, comic_authors, given_comic_id=comic_id)
+        if db_result < 0:
+            print(f'添加失败, 错误为{db_result}')
+            continue
+
+        db_result = local_db.linkComic2Source(comic_id, 1, hitomi_id)
+        if not db_result:
+            print(f'源链接失败')
+        comic_tags = remote_db.getComicTags(comic_id)
+        for tag in comic_tags:
+            tag_id = remote_db.getTagByName(tag)
+            db_result = local_db.linkTag2Comic(comic_id, tag_id)
+            if db_result < 0:
+                print(f'tag {tag}链接失败，错误号: {db_result}')
+
+hitomi_instance = Hitomi(storage_path_fmt='raw_comic', proxy_settings={'http': HTTPS_PROXY, 'https': HTTPS_PROXY})
 
 REMOTE_TEMPFILE = None
 if REMOTE_FILE:
@@ -71,12 +113,10 @@ if REMOTE_FILE:
         f.write(response.content)
     print('数据库下载完成')
     with ComicDB(REMOTE_TEMPFILE) as rdb, ComicDB() as ldb:
-        updateLocalDB(rdb, ldb)
+        updateFromRemoteDB(rdb, ldb)
     print(f'数据库更新完成, 删除临时文件')
     os.remove(REMOTE_TEMPFILE)
-    exit(0)
-
-
-with ComicDB() as comic_db:
-    recoveryFromLocalDB(comic_db)
+else:
+    with ComicDB() as comic_db:
+        recoveryFromLocalDB(comic_db)
 print("文件还原完成")

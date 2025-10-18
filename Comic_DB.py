@@ -13,7 +13,7 @@ except ImportError:
 import os.path
 import sqlite3
 import sys
-from typing import Optional, List
+from typing import Optional, List, Iterable, Tuple
 import pypika
 
 
@@ -165,25 +165,20 @@ class ComicDB:
         comic_result = self.cursor.fetchone()
         if comic_result is None:
             return ()
+        author_string = ', '.join(self.getComicAuthors(comic_id))
+        return comic_result + (author_string, self.getComicTags(comic_id))
 
-        # Fetch authors
-        author_query = '''
-            SELECT a.Name FROM Authors a
-            JOIN ComicAuthors ca ON a.ID = ca.AuthorID
-            WHERE ca.ComicID = ?
-        '''
-        self.cursor.execute(author_query, (comic_id,))
-        authors = self.cursor.fetchall()
-        author_string = ', '.join([author[0] for author in authors])
-
-        # Fetch tags
+    def getComicTags(self, comic_id) -> Tuple[str, ...]:
         tags_query = 'SELECT Name FROM Tags t JOIN ComicTags ct ON t.ID = ct.TagID WHERE ct.ComicID = ?'
         self.cursor.execute(tags_query, (comic_id,))
         tags = self.cursor.fetchall()
-        tags_tuple = tuple(tag[0] for tag in tags)
+        return tuple(tag[0] for tag in tags)
 
-        # Combine results: (ID, Title, FilePath, SeriesName, VolumeNumber, Authors, Tags)
-        return comic_result + (author_string, tags_tuple)
+    def getComicAuthors(self, comic_id: int) -> Tuple[str, ...]:
+        author_query = 'SELECT a.Name FROM Authors a JOIN ComicAuthors ca ON a.ID = ca.AuthorID WHERE ca.ComicID = ?'
+        self.cursor.execute(author_query, (comic_id,))
+        authors = self.cursor.fetchall()
+        return tuple(author[0] for author in authors)
 
     def getComicSource(self, comic_id):
         query = 'SELECT SourceComicID FROM ComicSources WHERE ComicID = ?'
@@ -260,10 +255,11 @@ class ComicDB:
             return False
 
     def addComic(self, title, filepath,
-                 authors: Optional[List[str]] = None,
+                 authors: Optional[Iterable[str]] = None,
                  series: Optional[str] = None,
                  volume: Optional[int] = None,
                  source: Optional[dict] = None,  # {'source_id': int, 'source_comic_id': str}
+                 given_comic_id: int = None,
                  check_file=True) -> Optional[int]:
         if series:
             if not volume:
@@ -275,10 +271,14 @@ class ComicDB:
         filepath = os.path.basename(filepath)
 
         try:
-            # Insert comic
-            query = 'INSERT INTO Comics (Title, FilePath, SeriesName, VolumeNumber) VALUES (?, ?, ?, ?)'
-            self.cursor.execute(query, (title, filepath, series, volume))
-            comic_id = self.cursor.lastrowid
+            if not given_comic_id:
+                query = 'INSERT INTO Comics (Title, FilePath, SeriesName, VolumeNumber) VALUES (?, ?, ?, ?)'
+                self.cursor.execute(query, (title, filepath, series, volume))
+                comic_id = self.cursor.lastrowid
+            else:
+                query = 'INSERT INTO Comics (ID, Title, FilePath, SeriesName, VolumeNumber) VALUES (?, ?, ?, ?, ?)'
+                self.cursor.execute(query, (given_comic_id, title, filepath, series, volume))
+                comic_id = given_comic_id
 
             # Handle authors
             if authors and comic_id:
@@ -299,7 +299,7 @@ class ComicDB:
             return comic_id
         except sqlite3.IntegrityError:
             self.conn.rollback()
-            return None  # Or a specific error code for duplicate file path
+            return -4
 
     def editComic(self, comic_id,
                   title: Optional[str] = None,
