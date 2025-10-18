@@ -214,6 +214,14 @@ class ComicDB:
             return results[0]
         return None
 
+    def getTagInfo(self, tag_id):
+        query = 'SELECT * FROM Tags WHERE ID = ?'
+        self.cursor.execute(query, (tag_id,))
+        results = self.cursor.fetchone()
+        if results:
+            return results[0]
+        return None
+
     def getTagByHitomi(self, hitomi_name):
         query = 'SELECT * FROM Tags WHERE HitomiAlter = ?'
         self.cursor.execute(query, (hitomi_name,))
@@ -375,14 +383,24 @@ class ComicDB:
             return 0
         return -1
 
-    def addTag(self, group_id: int, tag_name: str, hitomi_alter=None) -> Optional[int]:
+    def addTag(self,
+               group_id: int,
+               tag_name: str,
+               hitomi_alter: str = None,
+               given_tag_id: int = None) -> Optional[int]:
         if not isinstance(group_id, int) or group_id < 1:
             return -1
         try:
-            self.cursor.execute('INSERT INTO Tags (Name, GroupID, HitomiAlter) VALUES (?, ?, ?)',
-                                (tag_name, group_id, hitomi_alter))
-            self.conn.commit()
-            return self.cursor.lastrowid
+            if not given_tag_id:
+                self.cursor.execute('INSERT INTO Tags (Name, GroupID, HitomiAlter) VALUES (?, ?, ?)',
+                                    (tag_name, group_id, hitomi_alter))
+                self.conn.commit()
+                return self.cursor.lastrowid
+            else:
+                self.cursor.execute('INSERT INTO Tags (ID, Name, GroupID, HitomiAlter) VALUES (?, ?, ?, ?)',
+                                    (given_tag_id, tag_name, group_id, hitomi_alter))
+                self.conn.commit()
+                return given_tag_id
         except sqlite3.IntegrityError:
             self.conn.rollback()
             self.cursor.execute('SELECT ID FROM TagGroups WHERE ID = ?', (group_id,))

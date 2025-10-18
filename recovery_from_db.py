@@ -99,6 +99,14 @@ def updateFromRemoteDB(remote_db: ComicDB, local_db: ComicDB):
         for tag in comic_tags:
             tag_id = remote_db.getTagByName(tag)
             db_result = local_db.linkTag2Comic(comic_id, tag_id)
+            if db_result == -2:
+                print(f'tag不存在, 创建')
+                tag_id = remote_db.getTagByName(tag)
+                tag_info = remote_db.getTagInfo(tag_id)
+                db_result = local_db.addTag(tag_info[2], tag_info[1], tag_info[3], given_tag_id=tag_id)
+                if db_result < 0:
+                    print(f'tag {tag}添加失败，错误号: {db_result}')
+                db_result = local_db.linkTag2Comic(comic_id, tag_id)
             if db_result < 0:
                 print(f'tag {tag}链接失败，错误号: {db_result}')
 
