@@ -219,7 +219,7 @@ class ComicDB:
         self.cursor.execute(query, (tag_id,))
         results = self.cursor.fetchone()
         if results:
-            return results[0]
+            return results
         return None
 
     def getTagByHitomi(self, hitomi_name):
