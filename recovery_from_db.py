@@ -1,6 +1,7 @@
 import os
 from Comic_DB import ComicDB
 from hitomiv2 import Hitomi
+from log_comic import log_comic
 import sys
 import shutil
 import requests
@@ -17,8 +18,6 @@ if len(sys.argv) > 1:
     if sys.argv[1].startswith('http'):
         print('成功解析命令行参数为URL')
         REMOTE_FILE = sys.argv[1]
-
-hitomi = Hitomi(proxy_settings={'http': HTTPS_PROXY, 'https': HTTPS_PROXY})
 
 
 def recoveryFromLocalDB(db: ComicDB):
@@ -56,8 +55,12 @@ def recoveryFromLocalDB(db: ComicDB):
 def updateLocalDB(remote_db: ComicDB, local_db: ComicDB):
     local_comic_ids = {result[0] for result in local_db.getAllComicsSQL().submit()}
     remote_comic_ids = {result[0] for result in remote_db.getAllComicsSQL().submit()}
-    print(remote_comic_ids - local_comic_ids)
+    diff_ids = remote_comic_ids - local_comic_ids
+    for comic_id in diff_ids:
+        hitomi_id = remote_db.getComicSource(comic_id)
+        log_comic(hitomi, local_db, hitomi_id)
 
+hitomi = Hitomi(storage_path_fmt='raw_comic', proxy_settings={'http': HTTPS_PROXY, 'https': HTTPS_PROXY})
 
 REMOTE_TEMPFILE = None
 if REMOTE_FILE:
@@ -69,8 +72,10 @@ if REMOTE_FILE:
     print('数据库下载完成')
     with ComicDB(REMOTE_TEMPFILE) as rdb, ComicDB() as ldb:
         updateLocalDB(rdb, ldb)
+    print(f'数据库更新完成, 删除临时文件')
     os.remove(REMOTE_TEMPFILE)
     exit(0)
+
 
 with ComicDB() as comic_db:
     recoveryFromLocalDB(comic_db)

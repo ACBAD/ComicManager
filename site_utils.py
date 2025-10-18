@@ -1,3 +1,4 @@
+import hashlib
 import os
 from typing import Union, Optional
 import natsort
@@ -67,6 +68,14 @@ def checkThumbnails():
             continue
         print(f'comic {comic_id} has no thumbnail')
         generateThumbnail(comic_id)
+
+
+def getFileHash(file_path: str, chunk_size: int = 8192):
+    hash_md5 = hashlib.md5()
+    with open(file_path, 'rb') as f:
+        while chunk := f.read(chunk_size):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
 
 
 if __name__ == '__main__':

@@ -1,20 +1,11 @@
 import shutil
-import hashlib
 import os.path
 import sys
 import re
 from typing import Union, Optional
 from hitomiv2 import Hitomi
 import Comic_DB
-from site_utils import archived_comic_path
-
-
-def get_file_hash(file_path: str, chunk_size: int = 8192):
-    hash_md5 = hashlib.md5()
-    with open(file_path, 'rb') as f:
-        while chunk := f.read(chunk_size):
-            hash_md5.update(chunk)
-    return hash_md5.hexdigest()
+from site_utils import archived_comic_path, getFileHash
 
 
 def log_tag(db_obj: Comic_DB.ComicDB, igroup_id: Union[None, int], hitomi_name) -> int:
@@ -47,6 +38,7 @@ def extract_hitomi_id(hitomi_url: str) -> Optional[str]:
 
 
 def log_comic(hitomi: Hitomi, db: Comic_DB.ComicDB, inner_hitomi_id: int):
+    comic_tags_list = []
     if db.searchComicBySource(inner_hitomi_id):
         print('已存在')
         return
@@ -92,6 +84,7 @@ def log_comic(hitomi: Hitomi, db: Comic_DB.ComicDB, inner_hitomi_id: int):
             comic_authors_list.append(author['artist'])
 
     print('信息录入完成，开始获取源文件')
+    raw_path: str = hitomi.storage_path
     if os.path.exists(os.path.join(raw_path, f'{inner_hitomi_id}.zip')):
         print('检测到源文件已存在，跳过下载')
         download_name = f'{inner_hitomi_id}.zip'
@@ -102,7 +95,7 @@ def log_comic(hitomi: Hitomi, db: Comic_DB.ComicDB, inner_hitomi_id: int):
         print('下载失败')
         return
 
-    comic_hash = get_file_hash(os.path.join(raw_path, download_name))
+    comic_hash = getFileHash(os.path.join(raw_path, download_name))
     hash_name = f'{comic_hash}.zip'
     comp_path = os.path.join(raw_path, hash_name)
     shutil.move(os.path.join(raw_path, download_name),
@@ -129,12 +122,12 @@ def log_comic(hitomi: Hitomi, db: Comic_DB.ComicDB, inner_hitomi_id: int):
 
 
 if __name__ == '__main__':
-    raw_path = 'raw_comic'
-    hitomi_instance = Hitomi(storage_path_fmt=raw_path, debug_fmt=False)
+    raw_path_g = 'raw_comic'
+    hitomi_instance = Hitomi(storage_path_fmt=raw_path_g, debug_fmt=False)
 
     id_iter = None
     task_list = []
-    raw_file_list = os.listdir(raw_path)
+    raw_file_list = os.listdir(raw_path_g)
     if len(sys.argv) > 1:
         task_list += sys.argv
         del task_list[0]
@@ -163,7 +156,6 @@ if __name__ == '__main__':
                 print('输入错误')
                 continue
             hitomi_id = extract_result
-        comic_tags_list = []
         with Comic_DB.ComicDB() as ldb:
             log_comic(hitomi_instance, ldb, hitomi_id)
     print('录入完成')
