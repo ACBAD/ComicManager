@@ -76,7 +76,7 @@ def search_comic():
         elif comic_author:
             builder = db.searchComicByAuthor(comic_author)
         else:
-            builder = db.getAllComics()
+            builder = db.getAllComicsSQL()
         old_builder = builder.builder.__copy__()
         builder.builder = builder.builder.select(pypika.functions.Count('*'))
         total_count = builder.submit()[0][1]

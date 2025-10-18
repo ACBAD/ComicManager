@@ -1,9 +1,10 @@
+import hashlib
 import os.path
 import sqlite3
-from typing import Optional, List
-import pypika
-import hashlib
 import sys
+from typing import Optional, List
+
+import pypika
 
 
 def getFileHash(file_path):
@@ -106,7 +107,7 @@ class ComicDB:
                 )
                 ''')
 
-    def getAllComics(self) -> SuspendSQLQuery:
+    def getAllComicsSQL(self) -> SuspendSQLQuery:
         builder = pypika.SQLLiteQuery.from_('Comics').select('ID').orderby('ID', order=pypika.Order.desc)
         return SuspendSQLQuery(self.cursor, builder)
 
@@ -491,3 +492,5 @@ if __name__ == '__main__':
                 os.remove('archived_comics/' + file)
         elif first_arg == 'fix_hash':
             updateFileHash(db, 'archived_comics')
+        elif first_arg == 'test':
+            print('test')

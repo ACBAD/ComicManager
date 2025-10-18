@@ -18,19 +18,11 @@ if len(sys.argv) > 1:
         print('成功解析命令行参数为URL')
         REMOTE_FILE = sys.argv[1]
 
-
 hitomi = Hitomi(proxy_settings={'http': HTTPS_PROXY, 'https': HTTPS_PROXY})
-REMOTE_FILENAME = None
-if REMOTE_FILE:
-    print('检测到远程文件已定义')
-    REMOTE_FILENAME = REMOTE_FILE.split('/')[-1]
-    response = requests.get(REMOTE_FILE)
-    with open(REMOTE_FILENAME, 'wb') as f:
-        f.write(response.content)
-    print('数据库下载完成')
 
-with ComicDB(REMOTE_FILENAME) as db:
-    all_comics_query = db.getAllComics()
+
+def recoveryFromLocalDB(db: ComicDB):
+    all_comics_query = db.getAllComicsSQL()
     all_comics = all_comics_query.submit()
     for comic_row in all_comics:
         comic_id = comic_row[0]
@@ -59,4 +51,27 @@ with ComicDB(REMOTE_FILENAME) as db:
                 print(f"ID:{comic_id} 文件还原失败, 源ID:{source_comic_id}")
         except Exception as e:
             print(f"An error occurred while downloading comic with source ID {source_comic_id}: {e}")
+
+
+def updateLocalDB(remote_db: ComicDB, local_db: ComicDB):
+    local_comic_ids = {result[0] for result in local_db.getAllComicsSQL().submit()}
+    remote_comic_ids = {result[0] for result in remote_db.getAllComicsSQL().submit()}
+    print(remote_comic_ids - local_comic_ids)
+
+
+REMOTE_TEMPFILE = None
+if REMOTE_FILE:
+    print('检测到远程文件已定义')
+    REMOTE_TEMPFILE = '.remote_comic.db'
+    response = requests.get(REMOTE_FILE)
+    with open(REMOTE_TEMPFILE, 'wb') as f:
+        f.write(response.content)
+    print('数据库下载完成')
+    with ComicDB(REMOTE_TEMPFILE) as rdb, ComicDB() as ldb:
+        updateLocalDB(rdb, ldb)
+    os.remove(REMOTE_TEMPFILE)
+    exit(0)
+
+with ComicDB() as comic_db:
+    recoveryFromLocalDB(comic_db)
 print("文件还原完成")

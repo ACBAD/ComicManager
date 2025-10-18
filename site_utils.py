@@ -61,7 +61,7 @@ def checkThumbnails():
     if not os.path.exists(thumbnail_folder):
         os.mkdir(thumbnail_folder)
     with ComicDB() as db:
-        comics = {comic_id[0] for comic_id in db.getAllComics().submit()}
+        comics = {comic_id[0] for comic_id in db.getAllComicsSQL().submit()}
     for comic_id in comics:
         if os.path.exists(f'{thumbnail_folder}/{comic_id}.webp'):
             continue
