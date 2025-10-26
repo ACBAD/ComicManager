@@ -57,7 +57,7 @@ def recoveryFromLocalDB(db: ComicDB):
         print(f"检索到ID:{comic_id} 的源ID: {source_comic_id}.")
         comic = hitomi_instance.get_comic(source_comic_id)
         download_path_str = comic.download(max_threads=5)
-        download_path = Path(download_path_str) / Path(hitomi_instance.storage_path)
+        download_path = Path(hitomi_instance.storage_path) / Path(download_path_str)
         download_file_hash = getFileHash(download_path.as_posix())
         if download_file_hash != file_hash:
             raise AssertionError('哈希校验失败')
