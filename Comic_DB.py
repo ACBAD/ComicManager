@@ -13,7 +13,8 @@ except ImportError:
 import os.path
 import sqlite3
 import sys
-from typing import Optional, List, Iterable, Tuple
+from pathlib import Path
+from typing import Optional, List, Iterable, Tuple, Union
 import pypika
 
 
@@ -319,7 +320,7 @@ class ComicDB:
 
     def editComic(self, comic_id,
                   title: Optional[str] = None,
-                  filepath: Optional[str] = None,
+                  filepath: Optional[Union[str, Path]] = None,
                   authors: Optional[List[str]] = None,
                   series: Optional[str] = None,
                   volume: Optional[int] = None,
