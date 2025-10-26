@@ -147,7 +147,7 @@ def show_comic(comic_id):
         return flask.abort(404)
     comic_file_path = os.path.join(archived_comic_path, comic_info[2])
     if not os.path.exists(comic_file_path):
-        return flask.redirect('/cache/status')
+        return flask.abort(501)
     pic_list = getZipNamelist(comic_file_path)
     images = [f'/comic_pic/{comic_id}/{image}' for image in range(len(pic_list))]
     return flask.render_template('gallery-v2.html', images=images)

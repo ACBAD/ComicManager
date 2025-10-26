@@ -323,7 +323,7 @@ class ComicDB:
                   authors: Optional[List[str]] = None,
                   series: Optional[str] = None,
                   volume: Optional[int] = None,
-                  verify_file: bool = True) -> Optional[int]:
+                  verify_file: bool = True) -> int:
         # Update basic comic info
         update_fields = []
         parameters = []
