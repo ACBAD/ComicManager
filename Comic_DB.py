@@ -180,6 +180,14 @@ class ComicDB:
         authors = self.cursor.fetchall()
         return tuple(author[0] for author in authors)
 
+    def getSourceID(self, comic_id) -> Optional[int]:
+        query = 'SELECT SourceID FROM ComicSources WHERE ComicID = ?'
+        self.cursor.execute(query, (comic_id,))
+        result = self.cursor.fetchone()
+        if result:
+            return result[0]
+        return None
+
     def getComicSource(self, comic_id):
         query = 'SELECT SourceComicID FROM ComicSources WHERE ComicID = ?'
         self.cursor.execute(query, (comic_id,))

@@ -45,6 +45,9 @@ def recoveryFromLocalDB(db: ComicDB):
         if os.path.exists(local_path):
             continue
         print(f"ID:{comic_id} 本地文件不存在: {file_path}")
+        if db.getSourceID(comic_id) != 1:
+            print(f'非Hitomi源')
+            continue
         source_comic_id = db.getComicSource(comic_id)
         if not source_comic_id:
             print(f'ID:{comic_id} 无源ID')
