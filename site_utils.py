@@ -4,6 +4,7 @@ from typing import Union, Optional
 import natsort
 import zipfile
 import io
+from pathlib import Path
 from Comic_DB import ComicDB
 archived_comic_path = 'archived_comics'
 thumbnail_folder = 'thumbnail'
@@ -70,7 +71,7 @@ def checkThumbnails():
         generateThumbnail(comic_id)
 
 
-def getFileHash(file_path: str, chunk_size: int = 8192):
+def getFileHash(file_path: Union[str, Path], chunk_size: int = 8192):
     hash_md5 = hashlib.md5()
     with open(file_path, 'rb') as f:
         while chunk := f.read(chunk_size):
