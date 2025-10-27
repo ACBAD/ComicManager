@@ -1,11 +1,10 @@
 import hashlib
 import os
-from typing import Union, Optional
+from typing import Union
 import natsort
 import zipfile
 import io
 from pathlib import Path
-from Comic_DB import ComicDB
 archived_comic_path = 'archived_comics'
 thumbnail_folder = 'thumbnail'
 
@@ -36,48 +35,9 @@ def getZipImage(zip_path, pic_name) -> Union[str, io.BytesIO]:
             return img_bytes
 
 
-def getComicContent(comic_id: int, pic_index: int) -> Optional[io.BytesIO]:
-    with ComicDB() as db:
-        filename = db.getComicInfo(comic_id)
-        if filename is None:
-            return None
-        filename = filename[3]
-    file_path = os.path.join(archived_comic_path, filename)
-    pic_list = getZipNamelist(file_path)
-    assert isinstance(pic_list, list)
-    return getZipImage(file_path, pic_list[pic_index])
-
-
-def generateThumbnail(comic_id: int):
-    with ComicDB() as db:
-        filename = db.getComicInfo(comic_id)[2]
-    file_path = os.path.join(archived_comic_path, filename)
-    pic_list = getZipNamelist(file_path)
-    assert isinstance(pic_list, list)
-    thumbnail_content = getZipImage(file_path, pic_list[0])
-    with open(os.path.join(thumbnail_folder, f'{comic_id}.webp'), "wb") as f:
-        f.write(thumbnail_content.read())
-
-
-def checkThumbnails():
-    if not os.path.exists(thumbnail_folder):
-        os.mkdir(thumbnail_folder)
-    with ComicDB() as db:
-        comics = {comic_id[0] for comic_id in db.getAllComicsSQL().submit()}
-    for comic_id in comics:
-        if os.path.exists(f'{thumbnail_folder}/{comic_id}.webp'):
-            continue
-        print(f'comic {comic_id} has no thumbnail')
-        generateThumbnail(comic_id)
-
-
 def getFileHash(file_path: Union[str, Path], chunk_size: int = 8192):
     hash_md5 = hashlib.md5()
     with open(file_path, 'rb') as f:
         while chunk := f.read(chunk_size):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
-
-
-if __name__ == '__main__':
-    checkThumbnails()

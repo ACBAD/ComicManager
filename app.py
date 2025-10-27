@@ -9,7 +9,7 @@ from typing import Optional
 import flask
 import pypika.functions
 import Comic_DB
-from site_utils import archived_comic_path, getZipNamelist, getZipImage, generateThumbnail, thumbnail_folder
+from site_utils import archived_comic_path, getZipNamelist, getZipImage, thumbnail_folder
 
 PAGE_COUNT = 10
 
@@ -130,7 +130,7 @@ def get_comic_pic(comic_id: int, pic_index: Optional[str]):
     if pic_index == -1:
         thumbnail_path = os.path.join(thumbnail_folder, f'{comic_id}.webp')
         if not os.path.exists(thumbnail_path):
-            generateThumbnail(comic_id)
+            Comic_DB.generateThumbnail(comic_id)
         with open(os.path.join(thumbnail_folder, f'{comic_id}.webp'), 'rb') as thumbnail_f:
             return createPicResponse(io.BytesIO(thumbnail_f.read()), 'webp')
     if pic_index >= len(pic_list):
