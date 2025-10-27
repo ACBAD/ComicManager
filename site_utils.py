@@ -5,8 +5,8 @@ import natsort
 import zipfile
 import io
 from pathlib import Path
-archived_comic_path = 'archived_comics'
-thumbnail_folder = 'thumbnail'
+archived_comic_path = Path('archived_comics')
+thumbnail_folder = Path('thumbnail')
 
 if not os.path.exists(archived_comic_path):
     os.makedirs(archived_comic_path)

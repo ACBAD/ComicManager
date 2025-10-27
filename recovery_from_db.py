@@ -1,6 +1,6 @@
 import os
 try:
-    from site_utils import getFileHash
+    from site_utils import getFileHash, archived_comic_path
 except ImportError:
     print('非网站环境,哈希函数fallback至默认')
     import hashlib
@@ -9,18 +9,17 @@ except ImportError:
 
     def getFileHash(file_path: Union[str, Path], chunk_size: int = 8192):
         hash_md5 = hashlib.md5()
-        with open(file_path, 'rb') as f:
-            while chunk := f.read(chunk_size):
+        with open(file_path, 'rb') as hash_f:
+            while chunk := hash_f.read(chunk_size):
                 hash_md5.update(chunk)
         return hash_md5.hexdigest()
+    archived_comic_path = None
 from Comic_DB import ComicDB
 from hitomiv2 import Hitomi
 import sys
 import shutil
 import requests
 from pathlib import Path
-
-BASE_PATH = Path('archived_comics')
 
 HTTP_PROXY = os.environ.get('HTTP_PROXY', None)
 HTTPS_PROXY = os.environ.get('HTTPS_PROXY', None)
@@ -45,7 +44,8 @@ def recoveryFromLocalDB(db: ComicDB):
             comic_id = db.searchComicByFile(f'{remaining_file_hash}.zip')
             if comic_id:
                 print(f'文件名:{file},哈希{remaining_file_hash}寻找到匹配的comic,ID为{comic_id}')
-                shutil.move(remaining_file_path, BASE_PATH / Path(file))
+                shutil.move(remaining_file_path, archived_comic_path / Path(file))
+                print(f'已从{remaining_file_hash}移动到{archived_comic_path / Path(file)}')
             else:
                 print(f'文件名{file},哈希未匹配')
     all_comics_query = db.getAllComicsSQL()
@@ -56,9 +56,9 @@ def recoveryFromLocalDB(db: ComicDB):
         if not comic_info:
             print(f"无此ID: {comic_id}")
             continue
-        file_path = comic_info[2]
-        local_path = os.path.join(BASE_PATH, file_path)
-        file_hash = file_path.split('.')[0]
+        file_path = Path(comic_info[2])
+        local_path = archived_comic_path / file_path
+        file_hash = file_path.name.split('.')[0]
         if os.path.exists(local_path):
             continue
         print(f"ID:{comic_id} 本地文件不存在: {file_path}")
