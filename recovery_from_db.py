@@ -70,6 +70,9 @@ def recoveryFromLocalDB(db: ComicDB):
             print(f'ID:{comic_id} 无源ID')
             continue
         print(f"检索到ID:{comic_id} 的源ID: {source_comic_id}.")
+        if os.path.exists(f'{hitomi_instance.storage_path}/{source_comic_id}.zip'):
+            print(f'检测到滞留文件,跳过')
+            continue
         comic = hitomi_instance.get_comic(source_comic_id)
         download_path_str = comic.download(max_threads=5)
         download_path = Path(hitomi_instance.storage_path) / Path(download_path_str)
