@@ -145,7 +145,7 @@ def moveFile(src_path, dst_path):
     return True
 
 
-def upload_folder(folder_path):
+def uploadFolder(folder_path):
     files = os.listdir(folder_path)
     for file in files:
         uploadFile(f'{folder_path}/{file}', f'{folder_path}/{file}')
@@ -158,35 +158,41 @@ def remove_file(file_path):
     return False
 
 
-def download(files: Iterable, dl_dir):
+def download(files: Iterable[str], dl_dir, callback=None, use_proxy='http://127.0.0.1:10809'):
     if os.getenv('PYCHARM_HOSTED') == '1':
         raise EnvironmentError('PyCharm Hosted, cannot run aria2c in pycharm')
+    if not isinstance(files, Iterable):
+        raise RuntimeError("files must be Iterable")
     if os.name == 'nt':
-        if not os.path.exists('aria2c.exe'):
-            raise FileNotFoundError("Download file need aria2c")
         aria2_name = '.\\aria2c.exe'
     elif os.name == 'posix':
         aria2_name = 'aria2c'
     else:
-        raise NotImplemented("Unsupported platform")
-    with open('dl_temp', 'w') as f:
-        for file in files:
-            f.write(bucket_url + file + '\n')
-
+        raise NotImplementedError("Unsupported platform")
+    if os.name == 'nt' and not os.path.exists(aria2_name):
+        raise FileNotFoundError("aria2c not found in current directory")
+    urls = [bucket_url + f for f in files]
     aria_cmd = [
-        aria2_name,  # 已确保aria2c在工作目录下
+        aria2_name,
         '--dir', dl_dir,
         '-x', '16',
         '-s', '16',
         '--summary-interval=0',
-        '-i', 'dl_temp'
+        '-i', '-'
     ]
+    if use_proxy:
+        aria_cmd.append('--all-proxy')
+        aria_cmd.append(use_proxy)
     try:
-        process = subprocess.Popen(aria_cmd)
-        process.communicate()  # 等待进程完成
-        if process.returncode == 0:
-            return True
-        return False
+        process = subprocess.Popen(
+            aria_cmd,
+            stdin=subprocess.PIPE,
+            stdout=None if callback else subprocess.DEVNULL,
+            stderr=None if callback else subprocess.DEVNULL,
+            text=True  # 允许传递字符串而非bytes
+        )
+        process.communicate(input='\n'.join(urls))
+        return process.returncode
     except Exception as e:
         print(e)
         return False

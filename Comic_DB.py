@@ -1,12 +1,69 @@
+import io
 import os.path
+import shutil
 import sqlite3
-from token import OP
-from typing import Optional
+import sys
+from pathlib import Path
+from typing import Optional, List, Iterable, Tuple, Union
 import pypika
+
+try:
+    from site_utils import getFileHash, archived_comic_path, getZipNamelist, getZipImage, thumbnail_folder
+
+    def generateThumbnail(comic_id: int):
+        with ComicDB() as idb:
+            filename = idb.getComicInfo(comic_id)[2]
+        file_path = os.path.join(archived_comic_path, filename)
+        pic_list = getZipNamelist(file_path)
+        assert isinstance(pic_list, list)
+        thumbnail_content = getZipImage(file_path, pic_list[0])
+        with open(os.path.join(thumbnail_folder, f'{comic_id}.webp'), "wb") as f:
+            f.write(thumbnail_content.read())
+
+    def checkThumbnails():
+        if not os.path.exists(thumbnail_folder):
+            os.mkdir(thumbnail_folder)
+        with ComicDB() as idb:
+            comics = {comic_id[0] for comic_id in idb.getAllComicsSQL().submit()}
+        for comic_id in comics:
+            if os.path.exists(f'{thumbnail_folder}/{comic_id}.webp'):
+                continue
+            print(f'comic {comic_id} has no thumbnail')
+            generateThumbnail(comic_id)
+
+
+    def getComicContent(comic_id: int, pic_index: int) -> Optional[io.BytesIO]:
+        with ComicDB() as idb:
+            filename = idb.getComicInfo(comic_id)
+            if filename is None:
+                return None
+            filename = filename[2]
+        file_path = os.path.join(archived_comic_path, filename)
+        pic_list = getZipNamelist(file_path)
+        assert isinstance(pic_list, list)
+        if pic_index >= len(pic_list):
+            return None
+        return getZipImage(file_path, pic_list[pic_index])
+except ImportError:
+    print('非网站环境,哈希函数fallback至默认,comic路径,thumbnail目录,zip相关函数置空')
+    import hashlib
+    from typing import Union, Optional
+    from pathlib import Path
+
+    def getFileHash(file_path: Union[str, Path], chunk_size: int = 8192):
+        hash_md5 = hashlib.md5()
+        with open(file_path, 'rb') as f:
+            while chunk := f.read(chunk_size):
+                hash_md5.update(chunk)
+        return hash_md5.hexdigest()
+    archived_comic_path = None
+    thumbnail_folder = None
+    getZipNamelist = None
+    getZipImage = None
 
 
 class SuspendSQLQuery:
-    def __init__(self, cursor: sqlite3.Cursor, builder: pypika.dialects.SQLLiteQueryBuilder): # type: ignore
+    def __init__(self, cursor: sqlite3.Cursor, builder: pypika.dialects.SQLLiteQueryBuilder):  # type: ignore
         self.cursor = cursor
         self.builder = builder
 
@@ -16,8 +73,10 @@ class SuspendSQLQuery:
 
 
 class ComicDB:
-    def __init__(self):
-        self.conn = sqlite3.connect('Comics.db')
+    def __init__(self, db_file_name: str = None):  # Changed default to Comics.db
+        if not db_file_name:
+            db_file_name = 'Comics.db'
+        self.conn = sqlite3.connect(db_file_name)
         self.cursor = self.conn.cursor()
         self.init_db()
         self.conn.commit()
@@ -30,35 +89,48 @@ class ComicDB:
         self.conn.close()
 
     def init_db(self):
-        # 创建漫画表
+        # Use executescript to run schema from file, or define it here.
+        # For consistency with migrate.py, I'll define them here.
+        # This part will be idempotent.
         self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS Comics (
                     ID INTEGER PRIMARY KEY AUTOINCREMENT,
                     Title TEXT NOT NULL,
-                    Author TEXT NOT NULL,
-                    FilePath TEXT NOT NULL UNIQUE ,
+                    FilePath TEXT NOT NULL UNIQUE,
                     SeriesName TEXT,
                     VolumeNumber INTEGER
                 )
                 ''')
-        # 创建标签组表
+        self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS Authors (
+                    ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Name TEXT NOT NULL UNIQUE
+                )
+                ''')
+        self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS ComicAuthors (
+                    ComicID INTEGER,
+                    AuthorID INTEGER,
+                    FOREIGN KEY (ComicID) REFERENCES Comics(ID) ON DELETE CASCADE,
+                    FOREIGN KEY (AuthorID) REFERENCES Authors(ID),
+                    PRIMARY KEY (ComicID, AuthorID)
+                )
+                ''')
         self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS TagGroups (
                     ID INTEGER PRIMARY KEY AUTOINCREMENT,
-                    GroupName TEXT NOT NULL UNIQUE 
+                    GroupName TEXT NOT NULL UNIQUE
                 )
                 ''')
-        # 创建标签表
         self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS Tags (
                     ID INTEGER PRIMARY KEY AUTOINCREMENT,
-                    Name TEXT NOT NULL UNIQUE ,
+                    Name TEXT NOT NULL UNIQUE,
                     GroupID INTEGER,
-                    HitomiAlter TEXT default NULL,
+                    HitomiAlter TEXT DEFAULT NULL,
                     FOREIGN KEY (GroupID) REFERENCES TagGroups(ID)
                 )
                 ''')
-        # 创建漫画与标签关联表
         self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS ComicTags (
                     ComicID INTEGER,
@@ -68,63 +140,117 @@ class ComicDB:
                     PRIMARY KEY (ComicID, TagID)
                 )
                 ''')
+        self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS Sources (
+                    ID      INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Name    TEXT    NOT NULL UNIQUE,
+                    BaseUrl TEXT
+                )
+                ''')
+        self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS ComicSources (
+                    ComicID       INTEGER NOT NULL,
+                    SourceID      INTEGER NOT NULL,
+                    SourceComicID TEXT    NOT NULL,
+                    PRIMARY KEY (ComicID, SourceID),
+                    FOREIGN KEY (ComicID) REFERENCES Comics (ID) ON DELETE CASCADE,
+                    FOREIGN KEY (SourceID) REFERENCES Sources (ID) ON DELETE CASCADE
+                )
+                ''')
 
-    def get_all_comics(self) -> SuspendSQLQuery:
+    def getAllComicsSQL(self) -> SuspendSQLQuery:
         builder = pypika.SQLLiteQuery.from_('Comics').select('ID').orderby('ID', order=pypika.Order.desc)
         return SuspendSQLQuery(self.cursor, builder)
 
-    def search_comic_by_tags(self, *tags) -> SuspendSQLQuery:
-        # 创建查询语句
-        builder = (pypika.SQLLiteQuery.from_('ComicTags')
-                   .select('ComicID')
+    def searchComicByTags(self, *tags) -> SuspendSQLQuery:
+        ComicTags = pypika.Table('ComicTags')
+        builder = (pypika.SQLLiteQuery.from_(ComicTags)
+                   .select(ComicTags.ComicID)
                    .where(pypika.Field('TagID').isin(tags))
                    .orderby('ComicID', order=pypika.Order.desc))
         return SuspendSQLQuery(self.cursor, builder)
 
-    def search_comic_by_name(self, name, total_match=False):
+    def searchBomicByName(self, name, total_match=False):
         if not total_match:
-            # 使用 LIKE 进行模糊搜索，% 表示任意数量的字符
-            query = 'SELECT * FROM Comics WHERE Title LIKE ?'
-            # 为查询的关键词添加 % 通配符，表示标题包含关键词
+            query = 'SELECT ID, Title, FilePath, SeriesName, VolumeNumber FROM Comics WHERE Title LIKE ?'
             self.cursor.execute(query, ('%' + name + '%',))
         else:
-            query = 'SELECT * FROM Comics WHERE Title = ?'
+            query = 'SELECT ID, Title, FilePath, SeriesName, VolumeNumber FROM Comics WHERE Title = ?'
             self.cursor.execute(query, (name,))
         results = self.cursor.fetchall()
         return results
 
-    def search_comic_by_author(self, author) -> SuspendSQLQuery:
+    def searchComicByAuthor(self, author_name: str) -> SuspendSQLQuery:
+        Authors = pypika.Table('Authors')
+        ComicAuthors = pypika.Table('ComicAuthors')
         builder = (pypika.SQLLiteQuery
-                   .from_('Comics')
-                   .select('ID')
-                   .where(pypika.Field('Author') == author)
-                   .orderby('ID', order=pypika.Order.desc))
+                   .from_(ComicAuthors)
+                   .join(Authors).on(ComicAuthors.AuthorID == Authors.ID)
+                   .select(ComicAuthors.ComicID)
+                   .where(Authors.Name == author_name)
+                   .orderby(ComicAuthors.ComicID, order=pypika.Order.desc))
         return SuspendSQLQuery(self.cursor, builder)
 
-    def get_comic_info(self, comic_id):
-        query = 'SELECT * FROM Comics WHERE ID = ?'
+    def searchComicBySource(self, source_comic_id, source_id: int = None):
+        if source_id:
+            source_query = "SELECT ComicID FROM ComicSources WHERE SourceComicID = ? AND SourceID = ?"
+            self.cursor.execute(source_query, (source_comic_id, source_id))
+        else:
+            source_query = "SELECT ComicID FROM ComicSources WHERE SourceComicID = ?"
+            self.cursor.execute(source_query, (source_comic_id,))
+        source_result = self.cursor.fetchone()
+        if source_result:
+            return source_result[0]
+        return None
+
+    def getComicInfo(self, comic_id: int) -> tuple:
+        # Fetch comic details
+        query = 'SELECT ID, Title, FilePath, SeriesName, VolumeNumber FROM Comics WHERE ID = ?'
         self.cursor.execute(query, (comic_id,))
         comic_result = self.cursor.fetchone()
-        query = 'SELECT Name FROM Tags t JOIN ComicTags ct ON t.ID = ct.TagID WHERE ct.ComicID = ?'
-        self.cursor.execute(query, (comic_id,))
-        tags = self.cursor.fetchall()
         if comic_result is None:
-            comic_result = tuple()
-        if tags is None:
-            tags = tuple()
-        return comic_result + (tuple(tag[0] for tag in tags),)
+            return ()
+        author_string = ', '.join(self.getComicAuthors(comic_id))
+        return comic_result + (author_string, self.getComicTags(comic_id))
 
-    def search_comic_by_file(self, filename):
+    def getComicTags(self, comic_id) -> Tuple[str, ...]:
+        tags_query = 'SELECT Name FROM Tags t JOIN ComicTags ct ON t.ID = ct.TagID WHERE ct.ComicID = ?'
+        self.cursor.execute(tags_query, (comic_id,))
+        tags = self.cursor.fetchall()
+        return tuple(tag[0] for tag in tags)
+
+    def getComicAuthors(self, comic_id: int) -> Tuple[str, ...]:
+        author_query = 'SELECT a.Name FROM Authors a JOIN ComicAuthors ca ON a.ID = ca.AuthorID WHERE ca.ComicID = ?'
+        self.cursor.execute(author_query, (comic_id,))
+        authors = self.cursor.fetchall()
+        return tuple(author[0] for author in authors)
+
+    def getSourceID(self, comic_id) -> Optional[int]:
+        query = 'SELECT SourceID FROM ComicSources WHERE ComicID = ?'
+        self.cursor.execute(query, (comic_id,))
+        result = self.cursor.fetchone()
+        if result:
+            return result[0]
+        return None
+
+    def getComicSource(self, comic_id):
+        query = 'SELECT SourceComicID FROM ComicSources WHERE ComicID = ?'
+        self.cursor.execute(query, (comic_id,))
+        result = self.cursor.fetchone()
+        if result:
+            return result[0]
+        return None
+
+    def searchComicByFile(self, filename: Union[str, Path]) -> Optional[int]:
         query = 'SELECT * FROM Comics WHERE FilePath = ?'
-        self.cursor.execute(query, (filename,))
+        self.cursor.execute(query, (filename if isinstance(filename, str) else filename.name,))
         results = self.cursor.fetchone()
         if results:
             return results[0]
         else:
             return None
 
-    def get_tag_groups(self):
-        # 查询所有标签组
+    def getTagGroups(self):
         query = 'SELECT ID, GroupName FROM TagGroups'
         self.cursor.execute(query)
         results = self.cursor.fetchall()
@@ -133,7 +259,7 @@ class ComicDB:
             result_dict[group_name] = group_id
         return result_dict
 
-    def get_tag_by_name(self, tag_name):
+    def getTagByName(self, tag_name):
         query = 'SELECT * FROM Tags WHERE Name = ?'
         self.cursor.execute(query, (tag_name,))
         results = self.cursor.fetchone()
@@ -141,7 +267,15 @@ class ComicDB:
             return results[0]
         return None
 
-    def get_tag_by_hitomi(self, hitomi_name):
+    def getTagInfo(self, tag_id):
+        query = 'SELECT * FROM Tags WHERE ID = ?'
+        self.cursor.execute(query, (tag_id,))
+        results = self.cursor.fetchone()
+        if results:
+            return results
+        return None
+
+    def getTagByHitomi(self, hitomi_name):
         query = 'SELECT * FROM Tags WHERE HitomiAlter = ?'
         self.cursor.execute(query, (hitomi_name,))
         results = self.cursor.fetchone()
@@ -149,14 +283,12 @@ class ComicDB:
             return results[0]
         return None
 
-    def get_tags_by_group(self, group_id):
-        # 查询某个标签组内的所有标签
+    def getTagsByGroup(self, group_id):
         query = '''
             SELECT ID, Name
             FROM Tags
             WHERE GroupID = ?
             '''
-        # 执行查询
         self.cursor.execute(query, (group_id,))
         results = self.cursor.fetchall()
         result_dict = {}
@@ -164,96 +296,129 @@ class ComicDB:
             result_dict[tag_name] = tag_id
         return result_dict
 
-    def add_comic(self, title, filepath, author=None, series=None, volume=None, check_file=True) -> Optional[int]:
-        # 校验输入合法性
-        """
-        retval:
-        -1: No volume specified
-        -2: Volume must be an integer
-        -3: File does not exist
-        """
+    def addSource(self, name: str, base_url: Optional[str] = None) -> Optional[int]:
+        try:
+            self.cursor.execute("INSERT INTO Sources (Name, BaseUrl) VALUES (?, ?)", (name, base_url))
+            self.conn.commit()
+            return self.cursor.lastrowid
+        except sqlite3.IntegrityError:
+            self.conn.rollback()
+            return None
+
+    def linkComic2Source(self, comic_id: int, source_id: int, source_comic_id: str) -> bool:
+        try:
+            self.cursor.execute("INSERT INTO ComicSources (ComicID, SourceID, SourceComicID) VALUES (?, ?, ?)",
+                                (comic_id, source_id, source_comic_id))
+            self.conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            self.conn.rollback()
+            return False
+
+    def addComic(self, title, filepath,
+                 authors: Optional[Iterable[str]] = None,
+                 series: Optional[str] = None,
+                 volume: Optional[int] = None,
+                 source: Optional[dict] = None,  # {'source_id': int, 'source_comic_id': str}
+                 given_comic_id: int = None,
+                 check_file=True) -> Optional[int]:
         if series:
             if not volume:
                 return -1
-            if not volume.isdigit():
+            if not str(volume).isdigit():
                 return -2
         if (not os.path.exists(filepath)) and check_file:
             return -3
         filepath = os.path.basename(filepath)
-        # 插入新漫画
-        query = '''
-            INSERT INTO Comics (Title, Author, FilePath, SeriesName, VolumeNumber)
-            VALUES (?, ?, ?, ?, ?)
-            '''
-        self.cursor.execute(query, (title, author, filepath, series, volume))
-        # 提交事务
-        self.conn.commit()
-        return self.cursor.lastrowid
 
-    def edit_comic(self, comic_id,
-                   title=None,
-                   filepath=None,
-                   author=None,
-                   series=None,
-                   volume=None,
-                   sinicization=None,
-                   cm_id=None) -> str:
-        # 构建更新语句
-        query = 'UPDATE Comics SET '
+        try:
+            if not given_comic_id:
+                query = 'INSERT INTO Comics (Title, FilePath, SeriesName, VolumeNumber) VALUES (?, ?, ?, ?)'
+                self.cursor.execute(query, (title, filepath, series, volume))
+                comic_id = self.cursor.lastrowid
+            else:
+                query = 'INSERT INTO Comics (ID, Title, FilePath, SeriesName, VolumeNumber) VALUES (?, ?, ?, ?, ?)'
+                self.cursor.execute(query, (given_comic_id, title, filepath, series, volume))
+                comic_id = given_comic_id
+
+            # Handle authors
+            if authors and comic_id:
+                for author_name in authors:
+                    # Insert author if not exists, then get ID
+                    self.cursor.execute("INSERT OR IGNORE INTO Authors (Name) VALUES (?)", (author_name,))
+                    self.cursor.execute("SELECT ID FROM Authors WHERE Name = ?", (author_name,))
+                    author_id_result = self.cursor.fetchone()
+                    if author_id_result:
+                        author_id = author_id_result[0]
+                        # Link author to comic
+                        self.cursor.execute("INSERT INTO ComicAuthors (ComicID, AuthorID) VALUES (?, ?)",
+                                            (comic_id, author_id))
+            if source and comic_id:
+                self.linkComic2Source(comic_id, source['source_id'], source['source_comic_id'])
+
+            self.conn.commit()
+            return comic_id
+        except sqlite3.IntegrityError:
+            self.conn.rollback()
+            return -4
+
+    def editComic(self, comic_id,
+                  title: Optional[str] = None,
+                  filepath: Optional[Union[str, Path]] = None,
+                  authors: Optional[List[str]] = None,
+                  series: Optional[str] = None,
+                  volume: Optional[int] = None,
+                  verify_file: bool = True) -> int:
+        # Update basic comic info
+        update_fields = []
         parameters = []
-
-        if title:
-            query += 'Title = ?, '
+        if title is not None:
+            update_fields.append('Title = ?')
             parameters.append(title)
-        if author:
-            query += 'Author = ?, '
-            parameters.append(author)
-        if filepath:
-            if not os.path.exists(filepath):
-                return 'File does not exist'
-            query += 'FilePath = ?, '
-            parameters.append(filepath)
-        if series:
-            query += 'SeriesName = ?, '
+        if filepath is not None:
+            if verify_file and not os.path.exists(filepath):
+                return -1
+            update_fields.append('FilePath = ?')
+            parameters.append(os.path.basename(filepath))
+        if series is not None:
+            update_fields.append('SeriesName = ?')
             parameters.append(series)
-        if volume is not None:  # 允许卷号为 0
-            if not volume.isdigit():
-                return 'Volume must be an integer'
-            query += 'VolumeNumber = ?, '
+        if volume is not None:
+            if not str(volume).isdigit():
+                return -2
+            update_fields.append('VolumeNumber = ?')
             parameters.append(volume)
-        if sinicization:
-            query += 'SinicizationGroup = ?, '
-            parameters.append(sinicization)
-        if cm_id:
-            if not cm_id.isdigit():
-                return 'Comic ID must be an integer'
-            query += 'ComicMarket = ?, '
-            parameters.append(cm_id)
-        # 删除最后一个逗号并加上 WHERE 子句
-        query = query.rstrip(', ') + ' WHERE ID = ?'
-        parameters.append(comic_id)
-        # 执行更新
-        self.cursor.execute(query, parameters)
-        # 提交事务
-        self.conn.commit()
-        return ''
 
-    def delete_comic(self, comic_id: int) -> int:
-        """
-        retval
-        -1: No Comics found
-        """
-        # 执行删除操作
+        if update_fields:
+            query = 'UPDATE Comics SET ' + ', '.join(update_fields) + ' WHERE ID = ?'
+            parameters.append(comic_id)
+            self.cursor.execute(query, parameters)
+
+        # Update authors
+        if authors is not None:
+            # 1. Delete existing author links
+            self.cursor.execute('DELETE FROM ComicAuthors WHERE ComicID = ?', (comic_id,))
+            # 2. Add new author links
+            for author_name in authors:
+                self.cursor.execute("INSERT OR IGNORE INTO Authors (Name) VALUES (?)", (author_name,))
+                self.cursor.execute("SELECT ID FROM Authors WHERE Name = ?", (author_name,))
+                author_id_result = self.cursor.fetchone()
+                if author_id_result:
+                    author_id = author_id_result[0]
+                    self.cursor.execute("INSERT INTO ComicAuthors (ComicID, AuthorID) VALUES (?, ?)",
+                                        (comic_id, author_id))
+        self.conn.commit()
+        return 0
+
+    def deleteComic(self, comic_id: int) -> int:
         query = 'DELETE FROM Comics WHERE ID = ?'
         self.cursor.execute(query, (comic_id,))
-        # 提交事务
         self.conn.commit()
-        # 检查受影响的行数，确认是否成功删除
         if self.cursor.rowcount > 0:
             return 0
-        return -1
+        return -1  # No comic found
 
-    def add_tag_group(self, group_name) -> Optional[int]:
+    def addTagGroup(self, group_name) -> Optional[int]:
         insert_str = f'INSERT INTO TagGroups (GroupName) VALUES (?)'
         try:
             self.cursor.execute(insert_str, (group_name,))
@@ -263,45 +428,43 @@ class ComicDB:
             self.conn.rollback()
             return -1
 
-    def delete_tag_group(self, group_id) -> int:
+    def deleteTagTroup(self, group_id) -> int:
         delete_str = f'DELETE FROM TagGroups WHERE ID = ?'
         self.cursor.execute(delete_str, (group_id,))
-        # 提交事务
         self.conn.commit()
-        # 检查受影响的行数，确认是否成功删除
         if self.cursor.rowcount > 0:
             return 0
         return -1
 
-    def add_tag(self, group_id: int, tag_name: str, hitomi_alter=None) -> Optional[int]:
-        """
-        retval:
-        -1: Group ID not found
-        -2: Tag has exists
-        -3: Unknown Integrity Error
-        """
-        if not isinstance(group_id, int):
-            return -1
-        if group_id < 1:
+    def addTag(self,
+               group_id: int,
+               tag_name: str,
+               hitomi_alter: str = None,
+               given_tag_id: int = None) -> Optional[int]:
+        if not isinstance(group_id, int) or group_id < 1:
             return -1
         try:
-            # 插入新标签
-            self.cursor.execute('INSERT INTO Tags (Name, GroupID, HitomiAlter) VALUES (?, ?, ?)',
-                                (tag_name, group_id, hitomi_alter))
-            self.conn.commit()
-            return self.cursor.lastrowid
+            if not given_tag_id:
+                self.cursor.execute('INSERT INTO Tags (Name, GroupID, HitomiAlter) VALUES (?, ?, ?)',
+                                    (tag_name, group_id, hitomi_alter))
+                self.conn.commit()
+                return self.cursor.lastrowid
+            else:
+                self.cursor.execute('INSERT INTO Tags (ID, Name, GroupID, HitomiAlter) VALUES (?, ?, ?, ?)',
+                                    (given_tag_id, tag_name, group_id, hitomi_alter))
+                self.conn.commit()
+                return given_tag_id
         except sqlite3.IntegrityError:
             self.conn.rollback()
             self.cursor.execute('SELECT ID FROM TagGroups WHERE ID = ?', (group_id,))
-            group = self.cursor.fetchone()
-            if group is None:
+            if self.cursor.fetchone() is None:
                 return -1
             self.cursor.execute('SELECT ID FROM Tags WHERE Name = ?', (tag_name,))
             if self.cursor.fetchone():
                 return -2
             return -3
 
-    def delete_tag(self, tag_id) -> int:
+    def deleteTag(self, tag_id) -> int:
         delete_str = f'DELETE FROM Tags WHERE ID = ?'
         self.cursor.execute(delete_str, (tag_id,))
         self.conn.commit()
@@ -309,39 +472,26 @@ class ComicDB:
             return 0
         return -1
 
-    def get_range_comics(self, count=10, end: Optional[int] = None) -> list:
+    def getRangeComics(self, count=10, end: Optional[int] = None) -> list:
         query = 'SELECT ID FROM Comics ORDER BY ID DESC LIMIT ? OFFSET ?'
-        if end:
-            if count < 1:
-                return []
-            if end < count:
-                return []
-            self.cursor.execute(query, (end - count, count - 1))
-        else:
-            self.cursor.execute(query, (count, 0))
+        offset = 0
+        if end is not None:
+            offset = max(0, end - count)
+        
+        self.cursor.execute(query, (count, offset))
         comics = self.cursor.fetchall()
         return comics
 
-    def link_tag_to_comic(self, comic_id, tag_id):
-        """
-        retval
-        -1: Link has been Established
-        -2: Tag not found
-        -3: Comic not found
-        -4: Unknown Integrity Error
-        """
+    def linkTag2Comic(self, comic_id, tag_id):
         try:
-            # 插入漫画和标签的关联
             self.cursor.execute('INSERT INTO ComicTags (ComicID, TagID) VALUES (?, ?)', (comic_id, tag_id))
             self.conn.commit()
             return 0
         except sqlite3.IntegrityError:
             self.conn.rollback()
-            # 检查漫画和标签关联是否已存在
             self.cursor.execute('SELECT * FROM ComicTags WHERE ComicID = ? AND TagID = ?', (comic_id, tag_id))
             if self.cursor.fetchone():
                 return -1
-            # 查找标签ID
             self.cursor.execute('SELECT ID FROM Tags WHERE ID = ?', (tag_id,))
             if not self.cursor.fetchone():
                 return -2
@@ -350,7 +500,7 @@ class ComicDB:
                 return -3
             return -4
 
-    def verify_file(self, base_path):
+    def verifyComicFile(self, base_path):
         query_str = f'SELECT ID, FilePath FROM Comics'
         self.cursor.execute(query_str)
         results = self.cursor.fetchall()
@@ -362,17 +512,101 @@ class ComicDB:
                 file_match_ids.append(comic_id)
         return not_exist_files, file_match_ids
 
-    def get_wandering_file(self, base_path):
-        files = os.listdir(base_path)
-        wandering_files = []
-        for file in files:
-            result = self.search_comic_by_file(file)
+    def getWanderingFile(self, base_path: str):
+        test_files = os.listdir(base_path)
+        wandering_files = set()
+        for test_file in test_files:
+            result = self.searchComicByFile(test_file)
             if not result:
-                wandering_files.append(file)
+                wandering_files.add(test_file)
         return wandering_files
 
 
-if __name__ == '__main__':
-    with ComicDB() as db:
-        print(db.get_wandering_file('archived_comics'))
+def updateFileHash(idb: ComicDB, base_path: str):
+    test_files = os.listdir(base_path)
+    for test_file in test_files:
+        file_path = os.path.join(base_path, test_file)
+        file_hash = getFileHash(file_path)
+        if len(test_file.split('.')) < 2:
+            print(f'暂不支持无后缀文件, 跳过')
+            continue
+        file_ext = test_file.split('.')[-1]
+        hash_name = f'{file_hash}.{file_ext}'
+        if test_file == hash_name:
+            continue
+        print(f'文件{test_file}哈希{file_hash}不匹配')
+        if hash_name in test_files:
+            print(f'检测到哈希冲突, 跳过')
+            continue
+        new_file_path = os.path.join(base_path, hash_name)
+        comic_id = idb.searchComicByFile(test_file)
+        if not comic_id:
+            print(f'文件{test_file}未在数据库记录')
+            continue
+        try:
+            idb.editComic(comic_id, filepath=hash_name, verify_file=False)
+        except sqlite3.IntegrityError as ie:
+            print(f'更新数据库时发生错误{ie}, 跳过文件')
+            continue
+        print(f'数据库文件{test_file}更新为{hash_name}')
+        os.rename(file_path, new_file_path)
+        print(f'文件{test_file}重命名为{hash_name}')
 
+
+def updateHitomiFileHash(hitomi_id_list: list[int], db: ComicDB):
+    import hitomiv2
+    hitomi_instance = hitomiv2.Hitomi(proxy_settings={'http': os.environ.get('HTTP_PROXY', None),
+                                                      'https': os.environ.get('HTTPS_PROXY', None)})
+    for hitomi_id in hitomi_id_list:
+        source_comic_id = db.searchComicBySource(hitomi_id)
+        if not source_comic_id:
+            print(f'hitomi id {source_comic_id}未在数据库记录,请前往添加')
+            continue
+        hitomi_comic = hitomi_instance.get_comic(hitomi_id)
+        download_file_name = hitomi_comic.download(max_threads=5)
+        if not download_file_name:
+            raise RuntimeError('下载失败')
+        file_hash = getFileHash(download_file_name)
+        hash_name = Path(f'{file_hash}.zip')
+        hash_comic_id = db.searchComicByFile(hash_name)
+        if hash_comic_id:
+            print(f'hitomi id {hitomi_id}的哈希{hash_name}已在数据库记录为id{source_comic_id}的comic')
+            os.remove(download_file_name)
+            continue
+        db_hash = db.getComicInfo(source_comic_id)[2]
+        print(f'确认到哈希不匹配: 下载文件哈希{hash_name} 数据库记录哈希{db_hash}')
+        shutil.move(download_file_name, archived_comic_path / hash_name)
+        print(f'已将{download_file_name}移动到{archived_comic_path / hash_name}')
+        db_result = db.editComic(source_comic_id, filepath=archived_comic_path / hash_name)
+        if db_result:
+            raise RuntimeError(f'数据库修改失败,id为{db_result}')
+        print(f'{source_comic_id}处理完成')
+
+if __name__ == '__main__':
+    if len(sys.argv) <= 1:
+        print('缺少参数')
+        exit(1)
+    first_arg = sys.argv[1]
+    with ComicDB() as gdb:
+        if first_arg == 'clean':
+            dismatch_files = gdb.getWanderingFile('archived_comics')
+            user_input_g = input(f'将删除{len(dismatch_files)}个文件, 确定?')
+            if user_input_g != 'y':
+                exit(0)
+            for file in dismatch_files:
+                print(f'现在正删除 {file}')
+                os.remove('archived_comics/' + file)
+        elif first_arg == 'fix_hash':
+            updateFileHash(gdb, 'archived_comics')
+        elif first_arg == 'hitomi_update':
+            try:
+                hitomi_id_g = int(sys.argv[2])
+            except IndexError:
+                print('需要hitomi id')
+                exit(2)
+            except ValueError:
+                print('id 需为纯数字')
+                exit(3)
+            updateHitomiFileHash([hitomi_id_g], gdb)
+        elif first_arg == 'test':
+            print('test')
