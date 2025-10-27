@@ -45,7 +45,7 @@ def recoveryFromLocalDB(db: ComicDB):
             if comic_id:
                 print(f'文件名:{file},哈希{remaining_file_hash}寻找到匹配的comic,ID为{comic_id}')
                 shutil.move(remaining_file_path, archived_comic_path / Path(file))
-                print(f'已从{remaining_file_hash}移动到{archived_comic_path / Path(file)}')
+                print(f'已从{remaining_file_hash}移动到{archived_comic_path / Path(f"{remaining_file_hash}.zip")}')
             else:
                 print(f'文件名{file},哈希{remaining_file_hash}未匹配')
     all_comics_query = db.getAllComicsSQL()
