@@ -243,7 +243,7 @@ class ComicDB:
 
     def searchComicByFile(self, filename: Union[str, Path]) -> Optional[int]:
         query = 'SELECT * FROM Comics WHERE FilePath = ?'
-        self.cursor.execute(query, (filename,))
+        self.cursor.execute(query, (filename if isinstance(filename, str) else filename.name,))
         results = self.cursor.fetchone()
         if results:
             return results[0]
