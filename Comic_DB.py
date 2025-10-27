@@ -1,10 +1,12 @@
 import io
 import os.path
+import shutil
 import sqlite3
 import sys
 from pathlib import Path
 from typing import Optional, List, Iterable, Tuple, Union
 import pypika
+
 try:
     from site_utils import getFileHash, archived_comic_path, getZipNamelist, getZipImage, thumbnail_folder
 
@@ -239,7 +241,7 @@ class ComicDB:
             return result[0]
         return None
 
-    def searchComicByFile(self, filename: str) -> Optional[int]:
+    def searchComicByFile(self, filename: Union[str, Path]) -> Optional[int]:
         query = 'SELECT * FROM Comics WHERE FilePath = ?'
         self.cursor.execute(query, (filename,))
         results = self.cursor.fetchone()
@@ -551,14 +553,43 @@ def updateFileHash(idb: ComicDB, base_path: str):
         print(f'文件{test_file}重命名为{hash_name}')
 
 
+def updateHitomiFileHash(hitomi_id_list: list[int], db: ComicDB):
+    import hitomiv2
+    hitomi_instance = hitomiv2.Hitomi(proxy_settings={'http': os.environ.get('HTTP_PROXY', None),
+                                                      'https': os.environ.get('HTTPS_PROXY', None)})
+    for hitomi_id in hitomi_id_list:
+        source_comic_id = db.searchComicBySource(hitomi_id)
+        if not source_comic_id:
+            print(f'hitomi id {source_comic_id}未在数据库记录,请前往添加')
+            continue
+        hitomi_comic = hitomi_instance.get_comic(hitomi_id)
+        download_file_name = hitomi_comic.download(max_threads=5)
+        if not download_file_name:
+            raise RuntimeError('下载失败')
+        file_hash = getFileHash(download_file_name)
+        hash_name = Path(f'{file_hash}.zip')
+        hash_comic_id = db.searchComicByFile(hash_name)
+        if hash_comic_id:
+            print(f'hitomi id {hitomi_id}的哈希{hash_name}已在数据库记录为id{source_comic_id}的comic')
+            os.remove(download_file_name)
+            continue
+        db_hash = db.getComicInfo(source_comic_id)[2]
+        print(f'确认到哈希不匹配: 下载文件哈希{hash_name} 数据库记录哈希{db_hash}')
+        shutil.move(download_file_name, archived_comic_path / hash_name)
+        print(f'已将{download_file_name}移动到{archived_comic_path / hash_name}')
+        db_result = db.editComic(source_comic_id, filepath=archived_comic_path / hash_name)
+        if db_result:
+            raise RuntimeError(f'数据库修改失败,id为{db_result}')
+        print(f'{source_comic_id}处理完成')
+
 if __name__ == '__main__':
     if len(sys.argv) <= 1:
         print('缺少参数')
-        exit(0)
+        exit(1)
     first_arg = sys.argv[1]
-    with ComicDB() as db:
+    with ComicDB() as gdb:
         if first_arg == 'clean':
-            dismatch_files = db.getWanderingFile('archived_comics')
+            dismatch_files = gdb.getWanderingFile('archived_comics')
             user_input_g = input(f'将删除{len(dismatch_files)}个文件, 确定?')
             if user_input_g != 'y':
                 exit(0)
@@ -566,6 +597,16 @@ if __name__ == '__main__':
                 print(f'现在正删除 {file}')
                 os.remove('archived_comics/' + file)
         elif first_arg == 'fix_hash':
-            updateFileHash(db, 'archived_comics')
+            updateFileHash(gdb, 'archived_comics')
+        elif first_arg == 'hitomi_update':
+            try:
+                hitomi_id_g = int(sys.argv[2])
+            except IndexError:
+                print('需要hitomi id')
+                exit(2)
+            except ValueError:
+                print('id 需为纯数字')
+                exit(3)
+            updateHitomiFileHash([hitomi_id_g], gdb)
         elif first_arg == 'test':
             print('test')
