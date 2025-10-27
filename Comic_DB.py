@@ -1,48 +1,63 @@
-from site_utils import getFileHash, archived_comic_path, getZipNamelist, getZipImage, thumbnail_folder
-import os.path
 import io
+import os.path
 import sqlite3
 import sys
 from pathlib import Path
 from typing import Optional, List, Iterable, Tuple, Union
 import pypika
+try:
+    from site_utils import getFileHash, archived_comic_path, getZipNamelist, getZipImage, thumbnail_folder
+
+    def generateThumbnail(comic_id: int):
+        with ComicDB() as idb:
+            filename = idb.getComicInfo(comic_id)[2]
+        file_path = os.path.join(archived_comic_path, filename)
+        pic_list = getZipNamelist(file_path)
+        assert isinstance(pic_list, list)
+        thumbnail_content = getZipImage(file_path, pic_list[0])
+        with open(os.path.join(thumbnail_folder, f'{comic_id}.webp'), "wb") as f:
+            f.write(thumbnail_content.read())
+
+    def checkThumbnails():
+        if not os.path.exists(thumbnail_folder):
+            os.mkdir(thumbnail_folder)
+        with ComicDB() as idb:
+            comics = {comic_id[0] for comic_id in idb.getAllComicsSQL().submit()}
+        for comic_id in comics:
+            if os.path.exists(f'{thumbnail_folder}/{comic_id}.webp'):
+                continue
+            print(f'comic {comic_id} has no thumbnail')
+            generateThumbnail(comic_id)
 
 
-def getComicContent(comic_id: int, pic_index: int) -> Optional[io.BytesIO]:
-    with ComicDB() as idb:
-        filename = idb.getComicInfo(comic_id)
-        if filename is None:
+    def getComicContent(comic_id: int, pic_index: int) -> Optional[io.BytesIO]:
+        with ComicDB() as idb:
+            filename = idb.getComicInfo(comic_id)
+            if filename is None:
+                return None
+            filename = filename[2]
+        file_path = os.path.join(archived_comic_path, filename)
+        pic_list = getZipNamelist(file_path)
+        assert isinstance(pic_list, list)
+        if pic_index >= len(pic_list):
             return None
-        filename = filename[2]
-    file_path = os.path.join(archived_comic_path, filename)
-    pic_list = getZipNamelist(file_path)
-    assert isinstance(pic_list, list)
-    if pic_index >= len(pic_list):
-        return None
-    return getZipImage(file_path, pic_list[pic_index])
+        return getZipImage(file_path, pic_list[pic_index])
+except ImportError:
+    print('非网站环境,哈希函数fallback至默认,comic路径,thumbnail目录,zip相关函数置空')
+    import hashlib
+    from typing import Union, Optional
+    from pathlib import Path
 
-
-def generateThumbnail(comic_id: int):
-    with ComicDB() as idb:
-        filename = idb.getComicInfo(comic_id)[2]
-    file_path = os.path.join(archived_comic_path, filename)
-    pic_list = getZipNamelist(file_path)
-    assert isinstance(pic_list, list)
-    thumbnail_content = getZipImage(file_path, pic_list[0])
-    with open(os.path.join(thumbnail_folder, f'{comic_id}.webp'), "wb") as f:
-        f.write(thumbnail_content.read())
-
-
-def checkThumbnails():
-    if not os.path.exists(thumbnail_folder):
-        os.mkdir(thumbnail_folder)
-    with ComicDB() as idb:
-        comics = {comic_id[0] for comic_id in idb.getAllComicsSQL().submit()}
-    for comic_id in comics:
-        if os.path.exists(f'{thumbnail_folder}/{comic_id}.webp'):
-            continue
-        print(f'comic {comic_id} has no thumbnail')
-        generateThumbnail(comic_id)
+    def getFileHash(file_path: Union[str, Path], chunk_size: int = 8192):
+        hash_md5 = hashlib.md5()
+        with open(file_path, 'rb') as f:
+            while chunk := f.read(chunk_size):
+                hash_md5.update(chunk)
+        return hash_md5.hexdigest()
+    archived_comic_path = None
+    thumbnail_folder = None
+    getZipNamelist = None
+    getZipImage = None
 
 
 class SuspendSQLQuery:

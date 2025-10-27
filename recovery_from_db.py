@@ -1,5 +1,18 @@
 import os
-from site_utils import getFileHash
+try:
+    from site_utils import getFileHash
+except ImportError:
+    print('非网站环境,哈希函数fallback至默认')
+    import hashlib
+    from typing import Union, Optional
+    from pathlib import Path
+
+    def getFileHash(file_path: Union[str, Path], chunk_size: int = 8192):
+        hash_md5 = hashlib.md5()
+        with open(file_path, 'rb') as f:
+            while chunk := f.read(chunk_size):
+                hash_md5.update(chunk)
+        return hash_md5.hexdigest()
 from Comic_DB import ComicDB
 from hitomiv2 import Hitomi
 import sys
