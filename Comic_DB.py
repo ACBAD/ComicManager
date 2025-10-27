@@ -13,7 +13,7 @@ def getComicContent(comic_id: int, pic_index: int) -> Optional[io.BytesIO]:
         filename = idb.getComicInfo(comic_id)
         if filename is None:
             return None
-        filename = filename[3]
+        filename = filename[2]
     file_path = os.path.join(archived_comic_path, filename)
     pic_list = getZipNamelist(file_path)
     assert isinstance(pic_list, list)
