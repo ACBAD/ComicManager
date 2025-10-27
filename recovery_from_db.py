@@ -47,7 +47,7 @@ def recoveryFromLocalDB(db: ComicDB):
                 shutil.move(remaining_file_path, archived_comic_path / Path(file))
                 print(f'已从{remaining_file_hash}移动到{archived_comic_path / Path(file)}')
             else:
-                print(f'文件名{file},哈希未匹配')
+                print(f'文件名{file},哈希{remaining_file_hash}未匹配')
     all_comics_query = db.getAllComicsSQL()
     all_comics = all_comics_query.submit()
     for comic_row in all_comics:
@@ -75,7 +75,7 @@ def recoveryFromLocalDB(db: ComicDB):
         download_path = Path(hitomi_instance.storage_path) / Path(download_path_str)
         download_file_hash = getFileHash(download_path.as_posix())
         if download_file_hash != file_hash:
-            print(f'哈希不匹配,已存为滞留文件')
+            print(f'哈希{download_file_hash}不匹配数据库记录哈希{file_hash},已存为滞留文件')
             continue
         if download_path:
             # Rename and move the downloaded file
