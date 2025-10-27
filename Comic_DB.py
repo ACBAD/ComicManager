@@ -17,6 +17,8 @@ def getComicContent(comic_id: int, pic_index: int) -> Optional[io.BytesIO]:
     file_path = os.path.join(archived_comic_path, filename)
     pic_list = getZipNamelist(file_path)
     assert isinstance(pic_list, list)
+    if pic_index >= len(pic_list):
+        return None
     return getZipImage(file_path, pic_list[pic_index])
 
 

@@ -133,10 +133,11 @@ def get_comic_pic(comic_id: int, pic_index: Optional[str]):
             Comic_DB.generateThumbnail(comic_id)
         with open(os.path.join(thumbnail_folder, f'{comic_id}.webp'), 'rb') as thumbnail_f:
             return createPicResponse(io.BytesIO(thumbnail_f.read()), 'webp')
-    if pic_index >= len(pic_list):
+    img_content: io.BytesIO = Comic_DB.getComicContent(comic_id, pic_index)  # type: ignore
+    if not img_content:
         return flask.abort(404)
-    img_content: io.BytesIO = getZipImage(comic_file, pic_list[pic_index])  # type: ignore
-    return createPicResponse(img_content, os.path.splitext(pic_list[pic_index])[1].replace('.', ''))
+    # return createPicResponse(img_content, os.path.splitext(pic_list[pic_index])[1].replace('.', ''))
+    return createPicResponse(img_content, 'webp')
 
 
 @app.route('/show_comic/<int:comic_id>')

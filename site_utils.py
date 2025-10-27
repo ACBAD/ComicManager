@@ -1,6 +1,6 @@
 import hashlib
 import os
-from typing import Union
+from typing import Union, Optional
 import natsort
 import zipfile
 import io
@@ -22,10 +22,10 @@ def getZipNamelist(zip_path) -> Union[str, list]:
         return natsort.natsorted(zip_ref.namelist())
 
 
-def getZipImage(zip_path, pic_name) -> Union[str, io.BytesIO]:
+def getZipImage(zip_path, pic_name) -> Optional[io.BytesIO]:
     # 检查 zip 文件是否存在
     if not os.path.exists(zip_path):
-        return f"文件 {zip_path} 不存在"
+        return None
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
         # 读取图片文件内容并加载到内存
         with zip_ref.open(pic_name) as img_file:
