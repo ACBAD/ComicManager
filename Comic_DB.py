@@ -1,15 +1,4 @@
-try:
-    from site_utils import getFileHash
-except ImportError:
-    print('非网站环境,fallback至默认哈希函数')
-    import hashlib
-
-    def getFileHash(file_path: str, chunk_size: int = 8192):
-        hash_md5 = hashlib.md5()
-        with open(file_path, 'rb') as f:
-            while chunk := f.read(chunk_size):
-                hash_md5.update(chunk)
-        return hash_md5.hexdigest()
+from site_utils import getFileHash
 import os.path
 import sqlite3
 import sys
