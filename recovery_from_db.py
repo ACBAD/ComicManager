@@ -39,16 +39,15 @@ def recoveryFromLocalDB(db: ComicDB):
     if remaining_files:
         print('检测到滞留文件')
         remaining_base_path = Path(hitomi_instance.storage_path)
-        with ComicDB() as db:
-            for file in remaining_files:
-                remaining_file_path = remaining_base_path / Path(file)
-                remaining_file_hash = getFileHash(remaining_file_path)
-                comic_id = db.searchComicByFile(f'{remaining_file_hash}.zip')
-                if comic_id:
-                    print(f'文件名:{file},哈希{remaining_file_hash}寻找到匹配的comic,ID为{comic_id}')
-                    shutil.move(remaining_file_path, BASE_PATH / Path(file))
-                else:
-                    print(f'文件名{file},哈希未匹配')
+        for file in remaining_files:
+            remaining_file_path = remaining_base_path / Path(file)
+            remaining_file_hash = getFileHash(remaining_file_path)
+            comic_id = db.searchComicByFile(f'{remaining_file_hash}.zip')
+            if comic_id:
+                print(f'文件名:{file},哈希{remaining_file_hash}寻找到匹配的comic,ID为{comic_id}')
+                shutil.move(remaining_file_path, BASE_PATH / Path(file))
+            else:
+                print(f'文件名{file},哈希未匹配')
     all_comics_query = db.getAllComicsSQL()
     all_comics = all_comics_query.submit()
     for comic_row in all_comics:
