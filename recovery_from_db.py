@@ -75,7 +75,8 @@ def recoveryFromLocalDB(db: ComicDB):
         download_path = Path(hitomi_instance.storage_path) / Path(download_path_str)
         download_file_hash = getFileHash(download_path.as_posix())
         if download_file_hash != file_hash:
-            raise AssertionError(f'哈希校验失败,数据库记录:{file_hash},下载文件:{download_file_hash}')
+            print(f'哈希不匹配,已存为滞留文件')
+            continue
         if download_path:
             # Rename and move the downloaded file
             shutil.move(download_path, local_path)
