@@ -540,13 +540,12 @@ def fixFileHash(idb: ComicDB, base_path: str):
             print(f'文件{test_file}未在数据库记录')
             continue
         shutil.move(file_path, new_file_path)
-        print(f'文件{test_file}移动为{new_file_path}')
-        try:
-            idb.editComic(comic_id, filepath=new_file_path)
+        print(f'文件{file_path}移动为{new_file_path}')
+        db_result = idb.editComic(comic_id, filepath=new_file_path)
+        if db_result:
+            print(f'更新{comic_id}时发生数据库错误,错误码{db_result}')
+        else:
             print(f'数据库文件{test_file}更新为{new_file_path.name}')
-        except sqlite3.IntegrityError as ie:
-            print(f'更新数据库时发生错误{ie}, 跳过文件')
-            continue
 
 
 def updateHitomiFileHash(hitomi_id_list: list[int], db: ComicDB):
@@ -626,6 +625,9 @@ if __name__ == '__main__':
                 print(f'现在正删除 {file}')
                 os.remove(archived_comic_path / file)
         elif first_arg == 'fix_hash':
+            if not archived_comic_path:
+                print('未定义归档目录')
+                exit(1)
             fixFileHash(gdb, archived_comic_path)
         elif first_arg == 'hitomi_update':
             try:
