@@ -528,7 +528,7 @@ def fixFileHash(idb: ComicDB, base_path: str):
         file_path = base_path / test_file
         file_hash = getFileHash(file_path)
         name_hash = test_file.stem
-        if test_file.stem == name_hash:
+        if file_hash == name_hash:
             continue
         print(f'文件{test_file}名称与其哈希{file_hash}不匹配')
         if Path(f'{file_hash}').with_suffix(test_file.suffix) in test_files:
