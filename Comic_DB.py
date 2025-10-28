@@ -554,7 +554,12 @@ def updateFileHash(idb: ComicDB, base_path: str):
 
 
 def updateHitomiFileHash(hitomi_id_list: list[int], db: ComicDB):
-    import hitomiv2
+    try:
+        import hitomiv2
+    except ImportError:
+        hitomiv2 = None
+        print('请先安装hitomi模块')
+        exit(4)
     hitomi_instance = hitomiv2.Hitomi(proxy_settings={'http': os.environ.get('HTTP_PROXY', None),
                                                       'https': os.environ.get('HTTPS_PROXY', None)})
     for hitomi_id in hitomi_id_list:
@@ -608,5 +613,42 @@ if __name__ == '__main__':
                 print('id 需为纯数字')
                 exit(3)
             updateHitomiFileHash([hitomi_id_g], gdb)
+        elif first_arg == 'hitomi_replace':
+            try:
+                replace_dir = Path(sys.argv[2])
+            except IndexError:
+                print('需要替换目录')
+                exit(2)
+            if not replace_dir.exists() or not replace_dir.is_dir():
+                print('替换目录不存在或非目录')
+                exit(3)
+            if not archived_comic_path:
+                print(f'未定义归档目录')
+                exit(4)
+            replace_files = [Path(file) for file in os.listdir(replace_dir)]
+            for replace_file in replace_files:
+                replace_file_path = replace_dir / replace_file
+                if not replace_file_path.is_file():
+                    print('非文件')
+                    continue
+                print(f'检索到替换文件{replace_file}')
+                source_comic_id = replace_file.stem
+                comic_id = gdb.searchComicBySource(source_comic_id)
+                if not comic_id:
+                    print(f'未搜索到引用该源id{source_comic_id}的comic')
+                    continue
+                print(f'检索到源id{source_comic_id}对应的comic id{comic_id}')
+                replace_file_hash = getFileHash(replace_file_path)
+                db_file_hash = Path(gdb.getComicInfo(comic_id)[2]).stem
+                if db_file_hash == replace_file_hash:
+                    print(f'哈希{db_file_hash}匹配,无需替换')
+                    continue
+                print(f'替换文件哈希{replace_file_hash}与数据库记录哈希{db_file_hash}确不匹配')
+                shutil.move(replace_file_path, archived_comic_path / replace_file)
+                print(f'已将{replace_file}移动到{archived_comic_path / replace_file}')
+                db_result = gdb.editComic(comic_id, filepath=archived_comic_path / replace_file)
+                if db_result:
+                    raise RuntimeError(f'数据库修改失败,错误码为{db_result}')
+                print(f'{replace_file}处理完成')
         elif first_arg == 'test':
             print('test')
