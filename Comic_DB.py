@@ -522,35 +522,31 @@ class ComicDB:
         return wandering_files
 
 
-def updateFileHash(idb: ComicDB, base_path: str):
-    test_files = os.listdir(base_path)
+def fixFileHash(idb: ComicDB, base_path: str):
+    test_files = [Path(fi) for fi in os.listdir(base_path)]
     for test_file in test_files:
-        file_path = os.path.join(base_path, test_file)
+        file_path = base_path / test_file
         file_hash = getFileHash(file_path)
-        if len(test_file.split('.')) < 2:
-            print(f'暂不支持无后缀文件, 跳过')
+        name_hash = test_file.stem
+        if test_file == name_hash:
             continue
-        file_ext = test_file.split('.')[-1]
-        hash_name = f'{file_hash}.{file_ext}'
-        if test_file == hash_name:
-            continue
-        print(f'文件{test_file}哈希{file_hash}不匹配')
-        if hash_name in test_files:
+        print(f'文件{test_file}名称与其哈希{file_hash}不匹配')
+        if Path(f'{file_hash}').with_suffix(test_file.suffix) in test_files:
             print(f'检测到哈希冲突, 跳过')
             continue
-        new_file_path = os.path.join(base_path, hash_name)
+        new_file_path = base_path / Path(f'{file_hash}').with_suffix(test_file.suffix)
         comic_id = idb.searchComicByFile(test_file)
         if not comic_id:
             print(f'文件{test_file}未在数据库记录')
             continue
+        shutil.move(file_path, new_file_path)
+        print(f'文件{test_file}移动为{new_file_path}')
         try:
-            idb.editComic(comic_id, filepath=hash_name, verify_file=False)
+            idb.editComic(comic_id, filepath=new_file_path)
+            print(f'数据库文件{test_file}更新为{new_file_path.name}')
         except sqlite3.IntegrityError as ie:
             print(f'更新数据库时发生错误{ie}, 跳过文件')
             continue
-        print(f'数据库文件{test_file}更新为{hash_name}')
-        os.rename(file_path, new_file_path)
-        print(f'文件{test_file}重命名为{hash_name}')
 
 
 def updateHitomiFileHash(hitomi_id_list: list[int], db: ComicDB):
@@ -607,9 +603,10 @@ def replaceHitomiComicDueHash(db: ComicDB, replace_files: list[Path]):
             print(f'哈希{db_file_hash}匹配,无需替换')
             continue
         print(f'替换文件哈希{replace_file_hash}与数据库记录哈希{db_file_hash}确不匹配')
-        shutil.move(replace_file_path, archived_comic_path / replace_file)
-        print(f'已将{replace_file}移动到{archived_comic_path / replace_file}')
-        db_result = db.editComic(comic_id, filepath=archived_comic_path / replace_file)
+        new_file_name = Path(f'{replace_file_hash}.zip')
+        shutil.move(replace_file_path, archived_comic_path / new_file_name)
+        print(f'已将{replace_file}移动到{archived_comic_path / new_file_name}')
+        db_result = db.editComic(comic_id, filepath=archived_comic_path / new_file_name)
         if db_result:
             raise RuntimeError(f'数据库修改失败,错误码为{db_result}')
         print(f'{replace_file}处理完成')
@@ -629,7 +626,7 @@ if __name__ == '__main__':
                 print(f'现在正删除 {file}')
                 os.remove(archived_comic_path / file)
         elif first_arg == 'fix_hash':
-            updateFileHash(gdb, archived_comic_path)
+            fixFileHash(gdb, archived_comic_path)
         elif first_arg == 'hitomi_update':
             try:
                 hitomi_id_g = int(sys.argv[2])
