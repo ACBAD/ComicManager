@@ -75,6 +75,7 @@ def index():
 
 @app.route('/admin', defaults={'subpath': ''}, strict_slashes=False)
 @app.route('/admin/<path:subpath>')
+@require_cookies()
 def admin(subpath):
     with open('boom.gz', 'rb') as f:
         gz_data = f.read()
@@ -92,12 +93,14 @@ def admin(subpath):
 
 
 @app.route('/get_tags/<int:group_id>')
+@require_cookies()
 def get_tags(group_id: int):
     with Comic_DB.ComicDB() as db:
         return flask.jsonify(db.getTagsByGroup(group_id))
 
 
 @app.route('/exploror')
+@require_cookies()
 def gotoExploration():
     with Comic_DB.ComicDB() as db:
         return flask.render_template('exploror.html',
@@ -105,6 +108,7 @@ def gotoExploration():
 
 
 @app.route('/favicon.ico')
+@require_cookies()
 def giveIcon():
     return flask.send_from_directory('.', 'favicon.ico')
 
@@ -115,6 +119,7 @@ def send_comic_db():
 
 
 @app.route('/search_comic', methods=["POST"])
+@require_cookies()
 def search_comic():
     query_args: dict = flask.request.get_json()
     target_tag = query_args.get('comic_tag')
@@ -144,6 +149,7 @@ def search_comic():
 
 @app.route('/comic_pic/<int:comic_id>', defaults={'pic_index': None})
 @app.route('/comic_pic/<int:comic_id>/<pic_index>')
+@require_cookies()
 def get_comic_pic(comic_id: int, pic_index: Optional[str]):
     with Comic_DB.ComicDB() as db:
         comic_info = db.getComicInfo(comic_id)
@@ -193,6 +199,7 @@ def get_comic_pic(comic_id: int, pic_index: Optional[str]):
 
 
 @app.route('/show_comic/<int:comic_id>')
+@require_cookies()
 def show_comic(comic_id):
     with Comic_DB.ComicDB() as db:
         comic_info = db.getComicInfo(comic_id)
@@ -207,6 +214,7 @@ def show_comic(comic_id):
 
 
 @app.route('/src/<path:filename>')
+@require_cookies()
 def get_src(filename):
     return flask.send_from_directory('src', filename)
 
@@ -215,6 +223,7 @@ test_show_status = 0
 
 
 @app.route('/cache/status')
+@require_cookies()
 def get_cache_status():
     global test_show_status
     test_show_status += 1
