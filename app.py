@@ -38,12 +38,13 @@ def require_cookies(required_cookies: Optional[dict[str, str]] = None, redirect_
                 # 在非请求上下文中（例如，单元测试配置期间）
                 # 无法执行此检查，直接返回原始函数
                 # 或者可以记录一个错误
-                print("Warning: 'require_cookies' decorator skipped outside app context.", file=sys.stderr)
+                print("Warning: 'require_cookies' decorator skipped outside app context.")
                 return f(*args, **kwargs)
             # 遍历所有必需的cookie
             for cookie_name, expected_value in required_cookies.items():
                 # 使用 request.cookies.get() 获取实际值
                 actual_value = flask.request.cookies.get(cookie_name)
+                print(actual_value)
                 # 核心验证逻辑：
                 # 1. cookie 是否存在 (actual_value is None)
                 # 2. cookie 值是否匹配 (actual_value != expected_value)
