@@ -20,7 +20,7 @@ REQUIRED_AUTH_COOKIE = {
     'password': 'HayaseYuuka'
 }
 # 验证失败时，重定向到 'login' 端点
-REDIRECT_TARGET = 'login'
+REDIRECT_TARGET = 'index'
 
 
 def require_cookies(required_cookies: Optional[dict[str, str]] = None, redirect_endpoint: Optional[str] = None, **redirect_args):
