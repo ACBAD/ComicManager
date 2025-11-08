@@ -70,7 +70,7 @@ def set_correct_cookie():
 @require_cookies()
 @app.route('/')
 def index():
-    return flask.redirect(flask.url_for('/exploror'))
+    return flask.redirect(flask.url_for('exploror'))
 
 
 @app.route('/admin', defaults={'subpath': ''}, strict_slashes=False)
