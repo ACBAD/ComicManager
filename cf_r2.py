@@ -25,7 +25,8 @@ proxy_config = Config(proxies={'http': 'http://127.0.0.1:10809',
 
 s3 = boto3.client('s3', endpoint_url=endpoint_url,
                   aws_access_key_id=access_key_id,
-                  aws_secret_access_key=secret_access_key, config=proxy_config)
+                  aws_secret_access_key=secret_access_key, 
+                  config=proxy_config)
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -216,4 +217,5 @@ def listFiles(folder_path) -> Set[str]:
 # move_file('mujica_s1e7.mp4', 'mujica/mujica_s1e7.mp4')
 # abort_abnormal_uploads()
 if __name__ == '__main__':
-    uploadFile("test.zip")
+    uploadFile(r"D:\ppsspp_win\memstick\OreimoP2_disc1_cn_.iso", 'OreimoP2_disc1_cn_.iso')
+    uploadFile(r"D:\ppsspp_win\memstick\OreimoP2_disc2_cn_.iso", 'OreimoP2_disc2_cn_.iso')

@@ -10,15 +10,67 @@ import flask
 import pypika.functions
 import Comic_DB
 from site_utils import archived_comic_path, getZipNamelist, getZipImage, thumbnail_folder
+from functools import wraps
+import sys
 
 PAGE_COUNT = 10
 
 app = flask.Flask(__name__)
 
+REQUIRED_AUTH_COOKIE = {
+    'password': 'HayaseYuuka'
+}
+# 验证失败时，重定向到 'login' 端点
+REDIRECT_TARGET = 'login'
 
+
+def require_cookies(required_cookies: Optional[dict[str, str]] = None, redirect_endpoint: Optional[str] = None, **redirect_args):
+    if required_cookies is None:
+        required_cookies = REQUIRED_AUTH_COOKIE
+    if redirect_endpoint is None:
+        redirect_endpoint = REDIRECT_TARGET
+
+    def decorator(f):
+        @wraps(f)
+        def wrapped_function(*args, **kwargs):
+            # 检查 current_app 上下文是否激活
+            if not flask.current_app:
+                # 在非请求上下文中（例如，单元测试配置期间）
+                # 无法执行此检查，直接返回原始函数
+                # 或者可以记录一个错误
+                print("Warning: 'require_cookies' decorator skipped outside app context.", file=sys.stderr)
+                return f(*args, **kwargs)
+            # 遍历所有必需的cookie
+            for cookie_name, expected_value in required_cookies.items():
+                # 使用 request.cookies.get() 获取实际值
+                actual_value = flask.request.cookies.get(cookie_name)
+                # 核心验证逻辑：
+                # 1. cookie 是否存在 (actual_value is None)
+                # 2. cookie 值是否匹配 (actual_value != expected_value)
+                if actual_value is None or actual_value != expected_value:
+                    # 任何一个条件不满足，立即构建重定向 URL
+                    # 使用 url_for 确保路由的健壮性
+                    redirect_url = flask.url_for(redirect_endpoint, **redirect_args)
+                    # 返回重定向响应
+                    return flask.abort(403)
+            # 如果循环正常结束，说明所有cookie均验证通过
+            # 执行原始的路由函数
+            return f(*args, **kwargs)
+        return wrapped_function
+    return decorator
+
+
+@app.route('/HayaseYuuka')
+def set_correct_cookie():
+    resp = flask.make_response(flask.redirect(flask.url_for('/exploror')))
+    resp.set_cookie('password', 'HayaseYuuka')
+    return resp
+
+
+@require_cookies()
 @app.route('/')
 def index():
-    return flask.abort(403)
+    return flask.redirect(flask.url_for('/exploror'))
 
 
 @app.route('/admin', defaults={'subpath': ''}, strict_slashes=False)
