@@ -62,7 +62,7 @@ def require_cookies(required_cookies: Optional[dict[str, str]] = None, redirect_
 
 @app.route('/HayaseYuuka')
 def set_correct_cookie():
-    resp = flask.make_response(flask.redirect(flask.url_for('exploror')))
+    resp = flask.make_response(flask.redirect(flask.url_for('gotoExploration')))
     resp.set_cookie('password', 'HayaseYuuka')
     return resp
 
@@ -70,7 +70,7 @@ def set_correct_cookie():
 @require_cookies()
 @app.route('/')
 def index():
-    return flask.redirect(flask.url_for('exploror'))
+    return flask.redirect(flask.url_for('gotoExploration'))
 
 
 @app.route('/admin', defaults={'subpath': ''}, strict_slashes=False)
