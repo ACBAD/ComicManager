@@ -11,7 +11,6 @@ import pypika.functions
 import Comic_DB
 from site_utils import archived_comic_path, getZipNamelist, getZipImage, thumbnail_folder
 from functools import wraps
-import sys
 
 PAGE_COUNT = 10
 
@@ -68,8 +67,8 @@ def set_correct_cookie():
     return resp
 
 
-@require_cookies()
 @app.route('/')
+@require_cookies()
 def index():
     return flask.redirect(flask.url_for('gotoExploration'))
 
