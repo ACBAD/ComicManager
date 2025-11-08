@@ -20,6 +20,9 @@ import sys
 import shutil
 import requests
 from pathlib import Path
+from datetime import datetime
+
+print(f'Now is {datetime.now()}')
 
 HTTP_PROXY = os.environ.get('HTTP_PROXY', None)
 HTTPS_PROXY = os.environ.get('HTTPS_PROXY', None)
