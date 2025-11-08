@@ -43,7 +43,6 @@ def require_cookies(required_cookies: Optional[dict[str, str]] = None, redirect_
             for cookie_name, expected_value in required_cookies.items():
                 # 使用 request.cookies.get() 获取实际值
                 actual_value = flask.request.cookies.get(cookie_name)
-                print(actual_value)
                 # 核心验证逻辑：
                 # 1. cookie 是否存在 (actual_value is None)
                 # 2. cookie 值是否匹配 (actual_value != expected_value)
