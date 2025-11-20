@@ -62,7 +62,7 @@ def require_cookies(required_cookies: Optional[dict[str, str]] = None, redirect_
 @app.route('/HayaseYuuka')
 def set_correct_cookie():
     resp = flask.make_response(flask.redirect(flask.url_for('gotoExploration')))
-    resp.set_cookie('password', 'HayaseYuuka')
+    resp.set_cookie('password', 'HayaseYuuka', max_age=10 * 365 * 24 * 60 * 60)
     return resp
 
 
