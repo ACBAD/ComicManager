@@ -65,15 +65,15 @@ function filterList() {
 
 function submitAuthorSearch(event) {
     const author_name = event.target.textContent;
-    let author_input = document.getElementById('comic-input');
+    let author_input = document.getElementById('document-input');
     author_input.value = author_name;
     document.getElementById('dropdown-input').value = '';
-    requestComics(1);
+    requestDocuments(1);
 }
 
-let comicsContainer;
+let documentsContainer;
 $().ready(function () {
-    comicsContainer = document.getElementById('list-container');
+    documentsContainer = document.getElementById('list-container');
     const title_items = document.getElementsByClassName('title-item');
     for (let i = 0; i < title_items.length; i++) {
         title_items[i].addEventListener('click', switchPage);
@@ -111,18 +111,18 @@ function switchPage(event) {
     } else {
         alert('不是翻页按钮，无法应用功能');
     }
-    requestComics(targetPage);
+    requestDocuments(targetPage);
 }
 
 /**
  *
  * @param {number} target_page
- * @return {{comic_tag: number, author: string, target_page: number}}
+ * @return {{document_tag: number, author: string, target_page: number}}
  */
 
 function updateSearchArgs(target_page) {
     if (target_page === null)target_page = 1;
-    let searchArgs = {comic_tag: 0, author: '', target_page: target_page};
+    let searchArgs = {document_tag: 0, author: '', target_page: target_page};
     const tagName = document.getElementById('dropdown-input').value;
     const tagSelectList = document.getElementById('dropdown-list');
     let tagID = 0;
@@ -130,8 +130,8 @@ function updateSearchArgs(target_page) {
         let tagSelect = tagSelectList.children[i];
         if (tagSelect.textContent === tagName) tagID = tagSelect.getAttribute('tag-id');
     }
-    searchArgs.author = document.getElementById('comic-input').value;
-    searchArgs.comic_tag = tagID;
+    searchArgs.author = document.getElementById('document-input').value;
+    searchArgs.document_tag = tagID;
     return searchArgs;
 }
 
@@ -140,61 +140,61 @@ function updateSearchArgs(target_page) {
  * @param {Array}item
  */
 
-function createComic(item) {
+function createDocument(item) {
     console.log(item);
-    let comic_item = document.createElement('div');
-    comic_item.className = 'list-item';
-    let comic_thumbnail = document.createElement('img');
-    comic_thumbnail.className = 'thumbnail';
-    comic_thumbnail.src = '/comic_pic/' + item[0] + '/-1';
-    comic_item.appendChild(comic_thumbnail);
-    let comic_details = document.createElement('div');
-    comic_details.className = 'details'
-    let comic_title = document.createElement('h3');
-    let comic_link = document.createElement('a');
-    comic_link.href = '/show_comic/' + item[0];
-    comic_link.textContent = item[1];
-    comic_title.appendChild(comic_link);
-    comic_details.appendChild(comic_title);
-    let comic_author = document.createElement('button');
-    comic_author.addEventListener("click", submitAuthorSearch);
-    comic_author.textContent = item[5];
-    comic_details.appendChild(comic_author);
-    let comic_tags = document.createElement('div');
-    comic_tags.className = 'tag-info';
+    let document_item = document.createElement('div');
+    document_item.className = 'list-item';
+    let document_thumbnail = document.createElement('img');
+    document_thumbnail.className = 'thumbnail';
+    document_thumbnail.src = '/document_content/' + item[0] + '/-1';
+    document_item.appendChild(document_thumbnail);
+    let document_details = document.createElement('div');
+    document_details.className = 'details'
+    let document_title = document.createElement('h3');
+    let document_link = document.createElement('a');
+    document_link.href = '/show_document/' + item[0];
+    document_link.textContent = item[1];
+    document_title.appendChild(document_link);
+    document_details.appendChild(document_title);
+    let document_author = document.createElement('button');
+    document_author.addEventListener("click", submitAuthorSearch);
+    document_author.textContent = item[5];
+    document_details.appendChild(document_author);
+    let document_tags = document.createElement('div');
+    document_tags.className = 'tag-info';
     item[6].forEach(tag => {
         let single_tag = document.createElement('span');
         single_tag.textContent = tag;
-        comic_tags.appendChild(single_tag);
+        document_tags.appendChild(single_tag);
     })
-    comic_details.appendChild(comic_tags);
-    comic_item.appendChild(comic_details);
-    comicsContainer.appendChild(comic_item);
+    document_details.appendChild(document_tags);
+    document_item.appendChild(document_details);
+    documentsContainer.appendChild(document_item);
 }
 
 /**
- * @typedef {{total_count: number, comics_info: Array<Array>}} ComicInfos
+ * @typedef {{total_count: number, documents_info: Array<Array>}} DocumentInfos
  */
 
 /**
  *
  * @param {number} target_page
  */
-function requestComics(target_page) {
+function requestDocuments(target_page) {
     let searchArgs = updateSearchArgs(target_page);
     $.ajax({
         type: 'POST',
-        url: '/search_comic',
+        url: '/search_document',
         data: JSON.stringify(searchArgs),
         contentType: 'application/json;charset=UTF-8',
         success: function (response) {
-            console.log('search_comic 成功返回');
-            comicsContainer.innerHTML = '';
-            let comic_count = response.total_count;
-            let comics_info = response.comics_info;
+            console.log('search_document 成功返回');
+            documentsContainer.innerHTML = '';
+            let document_count = response.total_count;
+            let documents_info = response.documents_info;
             const total_page_item = document.getElementById('total-page');
-            total_page_item.textContent = Math.ceil(comic_count / 10).toString();
-            comics_info.forEach(createComic);
+            total_page_item.textContent = Math.ceil(document_count / 10).toString();
+            documents_info.forEach(createDocument);
         }
     })
     const now_page_item = document.getElementById('now-page');

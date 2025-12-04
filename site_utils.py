@@ -5,11 +5,11 @@ import natsort
 import zipfile
 import io
 from pathlib import Path
-archived_comic_path = Path('archived_comics')
+archived_document_path = Path('archived_comics')
 thumbnail_folder = Path('thumbnail')
 
-if not os.path.exists(archived_comic_path):
-    os.makedirs(archived_comic_path)
+if not os.path.exists(archived_document_path):
+    os.makedirs(archived_document_path)
 
 if not os.path.exists(thumbnail_folder):
     os.makedirs(thumbnail_folder)
@@ -17,7 +17,7 @@ if not os.path.exists(thumbnail_folder):
 
 def getZipNamelist(zip_path) -> Union[str, list]:
     if not os.path.exists(zip_path):
-        return f"{os.listdir(archived_comic_path)}"
+        return f"{os.listdir(archived_document_path)}"
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
         return natsort.natsorted(zip_ref.namelist())
 

@@ -9,7 +9,7 @@ import sqlmodel
 from typing import Optional, Union, List, Iterable, Sequence
 
 try:
-    from site_utils import getFileHash, archived_comic_path, getZipNamelist, getZipImage, thumbnail_folder
+    from site_utils import getFileHash, archived_document_path, getZipNamelist, getZipImage, thumbnail_folder
 
 
     def generate_thumbnail(document_id: int):
@@ -19,7 +19,7 @@ try:
                 return
             filename = doc.file_path
 
-        file_path = os.path.join(archived_comic_path, filename)
+        file_path = os.path.join(archived_document_path, filename)
         pic_list = getZipNamelist(file_path)
         assert isinstance(pic_list, list)
         if not pic_list:
@@ -57,7 +57,7 @@ try:
                 return None
             filename = doc.file_path
 
-        file_path = os.path.join(archived_comic_path, filename)
+        file_path = os.path.join(archived_document_path, filename)
         pic_list = getZipNamelist(file_path)
         assert isinstance(pic_list, list)
         if pic_index >= len(pic_list):
@@ -65,7 +65,7 @@ try:
         return getZipImage(file_path, pic_list[pic_index])
 
 except ImportError:
-    print('非网站环境,哈希函数fallback至默认,comic路径,thumbnail目录,zip相关函数置空')
+    print('非网站环境,哈希函数fallback至默认,document路径,thumbnail目录,zip相关函数置空')
     import hashlib
 
 
@@ -77,7 +77,7 @@ except ImportError:
         return hash_md5.hexdigest()
 
 
-    archived_comic_path = Path(".")  # Fallback path
+    archived_document_path = Path(".")  # Fallback path
     thumbnail_folder = Path("thumbnails")
     getZipNamelist = None
     getZipImage = None
@@ -198,7 +198,7 @@ class DocumentDB:
                      authors: Optional[Iterable[str]] = None,
                      series: Optional[str] = None,
                      volume: Optional[int] = None,
-                     source: Optional[dict] = None,  # {'source_id': int, 'source_comic_id': str}
+                     source: Optional[dict] = None,  # {'source_id': int, 'source_document_id': str}
                      given_id: int = None,
                      check_file=True) -> int:
 
@@ -242,7 +242,7 @@ class DocumentDB:
 
             # 处理来源
             if source:
-                self.link_document_source(doc.document_id, source['source_id'], source['source_comic_id'])
+                self.link_document_source(doc.document_id, source['source_id'], source['source_document_id'])
 
             self.session.commit()
             return doc.document_id
@@ -407,15 +407,15 @@ def update_hitomi_file_hash(hitomi_id_list: list[int], idb: DocumentDB):
 
         print(f'Downloading {ihid}...')
         try:
-            comic = hitomi.get_comic(ihid)
-            dl_path = comic.download(max_threads=5)  # 假设返回文件路径字符串
+            document = hitomi.get_comic(ihid)
+            dl_path = document.download(max_threads=5)  # 假设返回文件路径字符串
             if not dl_path:
                 raise RuntimeError("Download failed")
 
             dl_path = Path(dl_path)
             file_hash = getFileHash(dl_path)
             new_name = f"{file_hash}.zip"
-            target_path = archived_comic_path / new_name
+            target_path = archived_document_path / new_name
 
             # 检查此哈希是否已存在于其他文档
             exist_doc = idb.search_by_file(new_name)
@@ -441,10 +441,10 @@ if __name__ == '__main__':
 
     with DocumentDB() as db:
         if cmd == 'clean':
-            if not archived_comic_path:
+            if not archived_document_path:
                 print("Archived path not set")
                 sys.exit(1)
-            wandering = db.get_wandering_files(archived_comic_path)
+            wandering = db.get_wandering_files(archived_document_path)
             print(f"Found {len(wandering)} unlinked files.")
             if input("Delete them? (y/n): ") == 'y':
                 for f in wandering:
@@ -452,10 +452,10 @@ if __name__ == '__main__':
                     print(f"Deleted {f.name}")
 
         elif cmd == 'fix_hash':
-            if not archived_comic_path:
+            if not archived_document_path:
                 print("Archived path not set")
                 sys.exit(1)
-            fix_file_hash(db, archived_comic_path)
+            fix_file_hash(db, archived_document_path)
 
         elif cmd == 'hitomi_update':
             try:

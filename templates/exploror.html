@@ -4,13 +4,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>色孽神选</title>
+    <title>文献检索系统</title>
     <link rel="stylesheet" href="/src/exploror-v2.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="/src/exploror.js"></script>
 </head>
 <body>
-<h1>色孽神选</h1>
+<h1>文献检索系统</h1>
 <div id="title-bar" class="title-bar-class">
     <button id="prev-page-button-top" class="title-item">PREV</button>
     <h3>第</h3>
@@ -37,14 +37,14 @@
                 </ul>
             </div>
         </div>
-        <input type="text" id="comic-input" class="input-item" placeholder="输入title检索">
-        <button type="button" class="input-item" id="submit-button" onclick="requestComics(1)">提交</button>
+        <input type="text" id="document-input" class="input-item" placeholder="输入title检索">
+        <button type="button" class="input-item" id="submit-button" onclick="requestDocuments(1)">提交</button>
     </div>
 <div class="list-class" id="list-container">
     <div class="list-item">
         <img src="/src/default.jpg" alt="图像1" class="thumbnail">
         <div class="details">
-            <h3>Example Comic</h3>
+            <h3>Example Document</h3>
             <div class="tag-info">
                 <span>HayaseYuuka</span>
             </div>
