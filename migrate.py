@@ -1,112 +1,146 @@
 import sqlite3
 import os
+import sys
 
-# --- 配置 ---
-OLD_DB_PATH = 'old_Comics.db'  # 你的旧数据库文件名
-NEW_DB_PATH = 'Comics.db'  # 将要创建的新数据库文件名
-SCHEMA_PATH = 'Comics_schema.sql'  # 包含上述优化版 Schema 的 SQL 文件名
+# 配置路径
+OLD_DB_PATH = "Comics.db"  # 这里填入你旧数据库的文件名
+NEW_DB_PATH = "documents.db"  # 这里填入你想生成的新数据库文件名
+
+# 新 Schema 定义 (确保新库结构存在)
+with open('document_schema.sql', 'r', encoding='utf-8') as sql_f:
+    NEW_SCHEMA_SQL = sql_f.read()
 
 
-def main():
-    # 如果新数据库已存在，先删除，确保从零开始
-    if os.path.exists(NEW_DB_PATH):
-        os.remove(NEW_DB_PATH)
+def migrate_data():
+    if not os.path.exists(OLD_DB_PATH):
+        print(f"[Error] 旧数据库文件不存在: {OLD_DB_PATH}")
+        sys.exit(1)
 
-    # 连接数据库
+    # 连接到新数据库（如果不存在则自动创建）
+    conn = sqlite3.connect(NEW_DB_PATH)
+    cursor = conn.cursor()
+
+    # 1. 性能优化：关闭写同步，开启内存模式临时存储，极大提升插入速度
+    cursor.execute("PRAGMA synchronous = OFF;")
+    cursor.execute("PRAGMA journal_mode = MEMORY;")
+
     try:
-        old_conn = sqlite3.connect(OLD_DB_PATH)
-        old_cursor = old_conn.cursor()
+        # 2. 挂载旧数据库
+        print(f"[*] 正在挂载旧数据库: {OLD_DB_PATH}...")
+        # 注意：ATTACH 语句中文件名如果包含特殊字符可能需要转义，这里假设文件名标准
+        cursor.execute(f"ATTACH DATABASE '{OLD_DB_PATH}' AS old_db;")
 
-        new_conn = sqlite3.connect(NEW_DB_PATH)
-        new_cursor = new_conn.cursor()
-    except sqlite3.Error as e:
-        print(f"数据库连接失败: {e}")
-        return
+        print("[*] 开始迁移数据...")
 
-    print("数据库连接成功。")
+        # ==========================================
+        # 实体表迁移 (Entities)
+        # ==========================================
 
-    # 1. 在新数据库中创建表结构
-    print("正在创建新的表结构...")
-    with open(SCHEMA_PATH, 'r', encoding='utf-8') as f:
-        schema_sql = f.read()
-        new_cursor.executescript(schema_sql)
-    print("表结构创建完毕。")
+        # 3.1 迁移 Documents (Comics -> documents)
+        print("  -> Migrating: Comics -> documents")
+        cursor.execute("""
+                       INSERT INTO documents (document_id, title, file_path, series_name, volume_number)
+                       SELECT ID, Title, FilePath, SeriesName, VolumeNumber
+                       FROM old_db.Comics;
+                       """)
 
-    # 2. 迁移简单复制的表 (TagGroups, Tags)
-    print("正在迁移 TagGroups 和 Tags...")
-    migrate_simple_table(old_cursor, new_cursor, 'TagGroups', ['ID', 'GroupName'])
-    migrate_simple_table(old_cursor, new_cursor, 'Tags', ['ID', 'Name', 'GroupID', 'HitomiAlter'])
+        # 3.2 迁移 Authors (Authors -> authors)
+        print("  -> Migrating: Authors -> authors")
+        cursor.execute("""
+                       INSERT INTO authors (author_id, name)
+                       SELECT ID, Name
+                       FROM old_db.Authors;
+                       """)
 
-    # 3. 迁移 Comics 表和作者数据
-    print("正在迁移 Comics 和 Authors 数据...")
-    old_cursor.execute("SELECT ID, Title, Author, FilePath, SeriesName, VolumeNumber FROM Comics")
-    comics_data = old_cursor.fetchall()
+        # 3.3 迁移 Sources (Sources -> sources)
+        print("  -> Migrating: Sources -> sources")
+        cursor.execute("""
+                       INSERT INTO sources (source_id, name, base_url)
+                       SELECT ID, Name, BaseUrl
+                       FROM old_db.Sources;
+                       """)
 
-    authors_map = {}  # 用于存储 '作者名' -> new_author_id 的映射，避免重复查询
+        # 3.4 迁移 TagGroups (TagGroups -> tag_groups)
+        print("  -> Migrating: TagGroups -> tag_groups")
+        cursor.execute("""
+                       INSERT INTO tag_groups (tag_group_id, group_name)
+                       SELECT ID, GroupName
+                       FROM old_db.TagGroups;
+                       """)
 
-    for comic in comics_data:
-        comic_id, title, author_string, file_path, series_name, volume_number = comic
+        # 3.5 迁移 Tags (Tags -> tags)
+        print("  -> Migrating: Tags -> tags")
+        cursor.execute("""
+                       INSERT INTO tags (tag_id, name, group_id, hitomi_alter)
+                       SELECT ID, Name, GroupID, HitomiAlter
+                       FROM old_db.Tags;
+                       """)
 
-        # 插入优化后的 comic 数据 (不含 author)
-        new_cursor.execute(
-            "INSERT INTO Comics (ID, Title, FilePath, SeriesName, VolumeNumber) VALUES (?, ?, ?, ?, ?)",
-            (comic_id, title, file_path, series_name, volume_number)
-        )
+        # ==========================================
+        # 关联表迁移 (Link Tables)
+        # ==========================================
 
-        # 处理作者，支持逗号分隔的多个作者
-        if author_string:
-            author_list = [name.strip() for name in author_string.split(',') if name.strip()]
+        # 3.6 迁移 DocumentAuthors (ComicAuthors -> document_authors)
+        print("  -> Migrating: ComicAuthors -> document_authors")
+        cursor.execute("""
+                       INSERT INTO document_authors (document_id, author_id)
+                       SELECT ComicID, AuthorID
+                       FROM old_db.ComicAuthors;
+                       """)
 
-            for single_author_name in author_list:
-                author_id = authors_map.get(single_author_name)
+        # 3.7 迁移 DocumentTags (ComicTags -> document_tags)
+        print("  -> Migrating: ComicTags -> document_tags")
+        cursor.execute("""
+                       INSERT INTO document_tags (document_id, tag_id)
+                       SELECT ComicID, TagID
+                       FROM old_db.ComicTags;
+                       """)
 
-                if not author_id:
-                    # 缓存中没有，查询数据库或插入新作者
-                    # 使用 INSERT OR IGNORE 可以在作者已存在时静默失败，避免程序因UNIQUE约束而中断
-                    new_cursor.execute("INSERT OR IGNORE INTO Authors (Name) VALUES (?)", (single_author_name,))
-                    
-                    # 无论刚才是否成功插入，作者现在肯定存在于数据库中，我们获取其ID
-                    new_cursor.execute("SELECT ID FROM Authors WHERE Name = ?", (single_author_name,))
-                    result = new_cursor.fetchone()
-                    if result:
-                        author_id = result[0]
-                        authors_map[single_author_name] = author_id  # 更新缓存
+        # 3.8 迁移 DocumentSources (ComicSources -> document_sources)
+        # 注意字段映射: SourceComicID -> source_document_id
+        print("  -> Migrating: ComicSources -> document_sources")
+        cursor.execute("""
+                       INSERT INTO document_sources (document_id, source_id, source_document_id)
+                       SELECT ComicID, SourceID, SourceComicID
+                       FROM old_db.ComicSources;
+                       """)
 
-                # 创建关联
-                if author_id:
-                    new_cursor.execute(
-                        "INSERT INTO ComicAuthors (ComicID, AuthorID) VALUES (?, ?)",
-                        (comic_id, author_id)
-                    )
+        conn.commit()
+        print(f"[Success] 迁移完成。数据已写入 {NEW_DB_PATH}")
 
-    print(f"迁移了 {len(comics_data)} 条漫画记录和 {len(authors_map)} 位独立作者。")
+        # 简单验证
+        print("\n[Audit] 数据行数核对:")
+        tables = [
+            ("Comics", "documents"),
+            ("Authors", "authors"),
+            ("Tags", "tags"),
+            ("ComicTags", "document_tags")
+        ]
 
-    # 4. 迁移 ComicTags 连接表
-    print("正在迁移 ComicTags...")
-    migrate_simple_table(old_cursor, new_cursor, 'ComicTags', ['ComicID', 'TagID'])
+        for old_tbl, new_tbl in tables:
+            old_count = cursor.execute(f"SELECT COUNT(*) FROM old_db.{old_tbl}").fetchone()[0]
+            new_count = cursor.execute(f"SELECT COUNT(*) FROM {new_tbl}").fetchone()[0]
+            status = "OK" if old_count == new_count else "MISMATCH"
+            print(f"  - {old_tbl.ljust(12)} -> {new_tbl.ljust(15)}: {old_count} vs {new_count} [{status}]")
 
-    # 提交事务并关闭连接
-    print("迁移完成，正在保存...")
-    new_conn.commit()
-    old_conn.close()
-    new_conn.close()
-    print("所有操作成功完成！新的数据库文件已生成: ", NEW_DB_PATH)
-
-
-def migrate_simple_table(old_cur, new_cur, table_name, columns):
-    """一个用于迁移结构相同表的辅助函数"""
-    cols_str = ', '.join(columns)
-    placeholders = ', '.join(['?'] * len(columns))
-
-    old_cur.execute(f"SELECT {cols_str} FROM {table_name}")
-    data = old_cur.fetchall()
-
-    if data:
-        new_cur.executemany(f"INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders})", data)
-        print(f"成功迁移 {len(data)} 条记录到 {table_name} 表。")
-    else:
-        print(f"{table_name} 表中无数据可迁移。")
+    except sqlite3.IntegrityError as e:
+        print(f"\n[Error] 完整性约束错误 (可能是ID冲突或唯一性校验失败): \n{e}")
+        conn.rollback()
+    except Exception as e:
+        print(f"\n[Error] 发生未知错误: \n{e}")
+        conn.rollback()
+    finally:
+        # 解除挂载并关闭
+        try:
+            cursor.execute("DETACH DATABASE old_db;")
+        except Exception as e:
+            print(e)
+        conn.close()
 
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    # 在运行前，请确保新数据库已经创建了表结构（运行第一个Prompt中的SQL）
+    # 如果新库是空的，取消下面这行的注释来初始化表结构
+    # init_new_db_structure()
+
+    migrate_data()
