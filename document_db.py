@@ -2,7 +2,8 @@ import io
 import shutil
 import sys
 from pathlib import Path
-
+# noinspection PyProtectedMember
+from sqlmodel.sql._expression_select_cls import SelectOfScalar
 import document_sql
 import os
 import sqlmodel
@@ -103,20 +104,81 @@ class DocumentDB:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.session.close()
 
+    # 构建builder
+
+    @staticmethod
+    def query_all_documents() -> SelectOfScalar[document_sql.Document]:
+        """返回查询所有文档的 Builder"""
+        return sqlmodel.select(document_sql.Document).order_by(sqlmodel.desc(document_sql.Document.document_id))
+
+    @staticmethod
+    def query_by_tags(tags: Union[List[int], List[document_sql.Tag]],
+                      match_all: bool = True) -> SelectOfScalar[document_sql.Document]:
+        tag_ids: set[int] = set()
+        for tag_instance in tags:
+            if isinstance(tag_instance, int):
+                tag_ids.add(tag_instance)
+            if isinstance(tag_instance, document_sql.Tag):
+                tag_ids.add(tag_instance.id)
+        if not tag_ids:
+            return sqlmodel.select(document_sql.Document)
+        # 1. 基础 Join
+        statement = (
+            sqlmodel.select(document_sql.Document)
+            .join(document_sql.DocumentTagLink)
+            .where(sqlmodel.col(document_sql.DocumentTagLink.tag_id).in_(tag_ids))
+        )
+        # 2. 逻辑分支
+        if match_all and len(tag_ids) > 1:
+            # AND 逻辑：通过分组计数实现
+            statement = (
+                statement
+                .group_by(document_sql.Document.document_id)
+                .having(sqlmodel.func.count(document_sql.DocumentTagLink.tag_id) == len(tag_ids))
+            )
+        else:
+            # OR 逻辑：去重即可
+            statement = statement.distinct()
+        return statement.order_by(sqlmodel.desc(document_sql.Document.document_id))
+
+    @staticmethod
+    def query_by_author(author_name: str) -> SelectOfScalar[document_sql.Document]:
+        """返回按作者筛选的 Builder"""
+        stmt = (
+            sqlmodel.select(document_sql.Document)
+            .join(document_sql.DocumentAuthorLink)
+            .join(document_sql.Author)
+            .where(document_sql.Author.name == author_name)
+            .order_by(sqlmodel.desc(document_sql.Document.document_id))
+        )
+        return stmt
+
+    # --- 新增: 通用分页执行器 ---
+
+    def paginate_query(self, statement: SelectOfScalar[document_sql.Document], page: int, page_size: int):
+        """
+        接收一个 Builder，自动计算总数并返回当页数据
+        """
+        # 1. 计算总数 (Total Count)
+        # 使用 select_from(statement.subquery()) 是最稳健的方法，能处理 distinct/join 等复杂情况
+        count_stmt = sqlmodel.select(sqlmodel.func.count()).select_from(statement.subquery())
+        total_count = self.session.exec(count_stmt).one()
+        # 2. 获取当页数据 (Pagination)
+        offset_val = (page - 1) * page_size
+        paginated_stmt = statement.offset(offset_val).limit(page_size)
+        results = self.session.exec(paginated_stmt).all()
+        return total_count, results
+
     # --- 查询方法 ---
 
-    def get_all_documents(self) -> Sequence[document_sql.Document]:
+    def get_all_document_ids(self) -> Sequence[document_sql.Document]:
         return self.session.exec(
             sqlmodel.select(document_sql.Document).order_by(sqlmodel.desc(document_sql.Document.document_id))).all()
 
-    def search_by_tags(self, tag_ids: List[int]):
-        """返回包含指定所有标签的文档ID列表"""
-        statement = (
-            sqlmodel.select(document_sql.DocumentTagLink.document_id)
-            .where(sqlmodel.col(document_sql.DocumentTagLink.tag_id).in_(tag_ids))
-            .distinct()
-        )
-        return self.session.exec(statement).all()
+    def search_by_tags(self, tags: Union[List[int], List[document_sql.Tag]],
+                       match_all: bool = True) -> Sequence[document_sql.Document]:
+        builder = self.query_by_tags(tags, match_all)
+        return self.session.exec(builder).all()
 
     def search_by_name(self, name: str, exact_match: bool = False):
         statement = sqlmodel.select(document_sql.Document)
@@ -127,14 +189,8 @@ class DocumentDB:
         return self.session.exec(statement).all()
 
     def search_by_author(self, author_name: str):
-        statement = (
-            sqlmodel.select(document_sql.Document.document_id)
-            .join(document_sql.DocumentAuthorLink)
-            .join(document_sql.Author)
-            .where(document_sql.Author.name == author_name)
-            .order_by(sqlmodel.desc(document_sql.Document.document_id))
-        )
-        return self.session.exec(statement).all()
+        builder = self.query_by_author(author_name)
+        return self.session.exec(builder).all()
 
     def search_by_source(self, source_document_id: str, source_id: int = None) -> Optional[int]:
         statement = sqlmodel.select(document_sql.DocumentSourceLink.document_id).where(
@@ -151,13 +207,6 @@ class DocumentDB:
 
     def get_document_by_id(self, doc_id: int) -> Optional[document_sql.Document]:
         return self.session.get(document_sql.Document, doc_id)
-
-    def get_document_info_tuple(self, doc_id: int) -> Optional[document_sql.Document]:
-        """为了兼容旧代码逻辑，返回 tuple 格式: (ID, Title, FilePath, Series, Volume, AuthorsStr, TagsTuple)"""
-        doc = self.get_document_by_id(doc_id)
-        if not doc:
-            return None
-        return doc
 
     def get_range_documents(self, count=10, end: Optional[int] = None):
         statement = sqlmodel.select(document_sql.Document).order_by(
@@ -437,34 +486,34 @@ if __name__ == '__main__':
         print('Usage: python Document_DB.py [clean|fix_hash|hitomi_update|test] [args...]')
         sys.exit(1)
 
-    cmd = sys.argv[1]
+    cmd_g = sys.argv[1]
 
-    with DocumentDB() as db:
-        if cmd == 'clean':
+    with DocumentDB() as db_g:
+        if cmd_g == 'clean':
             if not archived_document_path:
                 print("Archived path not set")
                 sys.exit(1)
-            wandering = db.get_wandering_files(archived_document_path)
-            print(f"Found {len(wandering)} unlinked files.")
+            wandering_files_g = db_g.get_wandering_files(archived_document_path)
+            print(f"Found {len(wandering_files_g)} unlinked files.")
             if input("Delete them? (y/n): ") == 'y':
-                for f in wandering:
+                for f in wandering_files_g:
                     os.remove(f)
                     print(f"Deleted {f.name}")
 
-        elif cmd == 'fix_hash':
+        elif cmd_g == 'fix_hash':
             if not archived_document_path:
                 print("Archived path not set")
                 sys.exit(1)
-            fix_file_hash(db, archived_document_path)
+            fix_file_hash(db_g, archived_document_path)
 
-        elif cmd == 'hitomi_update':
+        elif cmd_g == 'hitomi_update':
             try:
-                hid = int(sys.argv[2])
-                update_hitomi_file_hash([hid], db)
+                hitomi_id_g = int(sys.argv[2])
+                update_hitomi_file_hash([hitomi_id_g], db_g)
             except (IndexError, ValueError):
                 print("Invalid Hitomi ID")
 
-        elif cmd == 'test':
+        elif cmd_g == 'test':
             # 简单的测试逻辑
-            cnt = len(db.get_all_documents())
-            print(f"Database connected. Total documents: {cnt}")
+            cnt_g = len(db_g.get_all_document_ids())
+            print(f"Database connected. Total documents: {cnt_g}")

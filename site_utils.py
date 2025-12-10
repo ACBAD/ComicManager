@@ -1,6 +1,6 @@
 import hashlib
 import os
-from typing import Union, Optional
+from typing import Optional
 import natsort
 import zipfile
 import io
@@ -15,7 +15,7 @@ if not os.path.exists(thumbnail_folder):
     os.makedirs(thumbnail_folder)
 
 
-def getZipNamelist(zip_path) -> Union[str, list]:
+def getZipNamelist(zip_path) -> str | list:
     if not os.path.exists(zip_path):
         return f"{os.listdir(archived_document_path)}"
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
@@ -35,7 +35,7 @@ def getZipImage(zip_path, pic_name) -> Optional[io.BytesIO]:
             return img_bytes
 
 
-def getFileHash(file_path: Union[str, Path], chunk_size: int = 8192):
+def getFileHash(file_path: str | Path, chunk_size: int = 8192):
     hash_md5 = hashlib.md5()
     with open(file_path, 'rb') as f:
         while chunk := f.read(chunk_size):

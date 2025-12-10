@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 import diskcache
 import fastapi
 from pydantic import BaseModel
-from site_utils import archived_comic_path
+from site_utils import archived_document_path
 import cf_comic
 import lanzou_api
 import enum
