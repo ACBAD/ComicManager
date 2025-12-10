@@ -1,13 +1,16 @@
+import asyncio
 import io
+import os
 import shutil
 import sys
 from pathlib import Path
+from typing import Optional, Union, List, Iterable, Sequence
+
+import sqlmodel
 # noinspection PyProtectedMember
 from sqlmodel.sql._expression_select_cls import SelectOfScalar
+
 import document_sql
-import os
-import sqlmodel
-from typing import Optional, Union, List, Iterable, Sequence
 
 try:
     from site_utils import getFileHash, archived_document_path, getZipNamelist, getZipImage, thumbnail_folder
@@ -112,7 +115,7 @@ class DocumentDB:
         return sqlmodel.select(document_sql.Document).order_by(sqlmodel.desc(document_sql.Document.document_id))
 
     @staticmethod
-    def query_by_tags(tags: Union[List[int], List[document_sql.Tag]],
+    def query_by_tags(tags: List[int] | List[document_sql.Tag],
                       match_all: bool = True) -> SelectOfScalar[document_sql.Document]:
         tag_ids: set[int] = set()
         for tag_instance in tags:
@@ -155,7 +158,9 @@ class DocumentDB:
 
     # --- 新增: 通用分页执行器 ---
 
-    def paginate_query(self, statement: SelectOfScalar[document_sql.Document], page: int, page_size: int):
+    def paginate_query(self, statement: SelectOfScalar[document_sql.Document],
+                       page: int,
+                       page_size: int) -> tuple[int, Sequence[document_sql.Document]]:
         """
         接收一个 Builder，自动计算总数并返回当页数据
         """
@@ -180,7 +185,7 @@ class DocumentDB:
         builder = self.query_by_tags(tags, match_all)
         return self.session.exec(builder).all()
 
-    def search_by_name(self, name: str, exact_match: bool = False):
+    def search_by_name(self, name: str, exact_match: bool = False) -> Sequence[document_sql.Document]:
         statement = sqlmodel.select(document_sql.Document)
         if exact_match:
             statement = statement.where(document_sql.Document.title == name)
@@ -188,46 +193,47 @@ class DocumentDB:
             statement = statement.where(sqlmodel.col(document_sql.Document.title).contains(name))
         return self.session.exec(statement).all()
 
-    def search_by_author(self, author_name: str):
+    def search_by_author(self, author_name: str) -> Sequence[document_sql.Document]:
         builder = self.query_by_author(author_name)
         return self.session.exec(builder).all()
 
-    def search_by_source(self, source_document_id: str, source_id: int = None) -> Optional[int]:
-        statement = sqlmodel.select(document_sql.DocumentSourceLink.document_id).where(
+    def search_by_source(self, source_document_id: str,
+                         source_id: Optional[int] = None) -> Optional[document_sql.Document]:
+        statement = sqlmodel.select(document_sql.DocumentSourceLink).where(
             document_sql.DocumentSourceLink.source_document_id == source_document_id
         )
         if source_id:
             statement = statement.where(document_sql.DocumentSourceLink.source_id == source_id)
         return self.session.exec(statement).first()
 
-    def search_by_file(self, filename: Union[str, Path]) -> Optional[int]:
+    def search_by_file(self, filename: Union[str, Path]) -> Optional[document_sql.Document]:
         fname = filename.name if isinstance(filename, Path) else filename
-        statement = sqlmodel.select(document_sql.Document.document_id).where(document_sql.Document.file_path == fname)
+        statement = sqlmodel.select(document_sql.Document).where(document_sql.Document.file_path == fname)
         return self.session.exec(statement).first()
 
     def get_document_by_id(self, doc_id: int) -> Optional[document_sql.Document]:
         return self.session.get(document_sql.Document, doc_id)
 
-    def get_range_documents(self, count=10, end: Optional[int] = None):
+    def get_range_documents(self, count=10, target_page: Optional[int] = None):
         statement = sqlmodel.select(document_sql.Document).order_by(
             sqlmodel.desc(document_sql.Document.document_id)).limit(count)
-        if end is not None:
-            offset_val = max(0, end - count)
+        if target_page is not None and target_page >= 1:
+            offset_val = count * (target_page - 1)
             statement = statement.offset(offset_val)
         return self.session.exec(statement).all()
 
     # --- 标签与元数据管理 ---
 
-    def get_tag_groups(self) -> dict:
+    def get_tag_groups(self) -> Sequence[document_sql.TagGroup]:
         groups = self.session.exec(sqlmodel.select(document_sql.TagGroup)).all()
-        return {g.group_name: g.tag_group_id for g in groups}
+        return groups
 
     def get_tag_by_name(self, name: str) -> Optional[document_sql.Tag]:
         return self.session.exec(sqlmodel.select(document_sql.Tag).where(document_sql.Tag.name == name)).first()
 
-    def get_tags_by_group(self, group_id: int) -> dict:
+    def get_tags_by_group(self, group_id: int) -> Sequence[document_sql.Tag]:
         tags = self.session.exec(sqlmodel.select(document_sql.Tag).where(document_sql.Tag.group_id == group_id)).all()
-        return {t.name: t.tag_id for t in tags}
+        return tags
 
     # --- 写入与修改方法 ---
 
@@ -418,51 +424,50 @@ def fix_file_hash(idb: DocumentDB, base_path: Union[str, Path]):
             continue
 
         # 查找旧文件在数据库中的记录
-        doc_id = idb.search_by_file(test_file)
-        if not doc_id:
+        doc = idb.search_by_file(test_file)
+        if not doc:
             print(f'文件 {test_file.name} 未在数据库记录，跳过')
             continue
 
         shutil.move(test_file, new_file_path)
         print(f'Moved: {test_file.name} -> {new_filename}')
 
-        res = idb.edit_document(doc_id, filepath=new_file_path)
+        res = idb.edit_document(doc.document_id, filepath=new_file_path)
         if res == 0:
             print(f'数据库已更新为 {new_filename}')
         else:
             print(f'数据库更新失败 Code: {res}')
 
 
-def update_hitomi_file_hash(hitomi_id_list: list[int], idb: DocumentDB):
+async def update_hitomi_file_hash(hitomi_id_list: list[int], idb: DocumentDB):
     try:
         import hitomiv2
     except ImportError:
         print('请先安装 hitomiv2 模块')
         hitomiv2 = None
         sys.exit(4)
-
-    hitomi = hitomiv2.Hitomi(proxy_settings={
-        'http': os.environ.get('HTTP_PROXY', None),
-        'https': os.environ.get('HTTPS_PROXY', None)
-    })
+    temp_document_content_path = Path('temp_document_content')
+    hitomi = hitomiv2.Hitomi(proxy_settings=os.environ.get('HTTP_PROXY', None))
+    await hitomi.refresh_version()
 
     for ihid in hitomi_id_list:
         # 查找数据库中关联了该 source_id 的文档
         # 假设 hitomi 的 source_id 在数据库中是已知的，这里简化处理，只按 source_document_id 查
-        doc_id = idb.search_by_source(str(ihid))
-        if not doc_id:
+        doc = idb.search_by_source(str(ihid))
+        if not doc:
             print(f'Hitomi ID {ihid} 未在数据库中找到')
             continue
 
         print(f'Downloading {ihid}...')
+        temp_file_path = temp_document_content_path / Path(f'{ihid}.zip')
+        comic_file = open(temp_file_path, 'wb')
         try:
-            document = hitomi.get_comic(ihid)
-            dl_path = document.download(max_threads=5)  # 假设返回文件路径字符串
-            if not dl_path:
+            document = await hitomi.get_comic(ihid)
+            dl_result = await document.download(comic_file, max_threads=5)  # 假设返回文件路径字符串
+            if not dl_result:
                 raise RuntimeError("Download failed")
 
-            dl_path = Path(dl_path)
-            file_hash = getFileHash(dl_path)
+            file_hash = getFileHash(temp_file_path)
             new_name = f"{file_hash}.zip"
             target_path = archived_document_path / new_name
 
@@ -470,15 +475,18 @@ def update_hitomi_file_hash(hitomi_id_list: list[int], idb: DocumentDB):
             exist_doc = idb.search_by_file(new_name)
             if exist_doc:
                 print(f'Hash {new_name} 已经存在于 ID {exist_doc}')
-                os.remove(dl_path)
-                continue
-
-            shutil.move(dl_path, target_path)
-            idb.edit_document(doc_id, filepath=target_path)
+                raise FileExistsError
+            comic_file.close()
+            shutil.move(temp_file_path, target_path)
+            idb.edit_document(doc.document_id, filepath=target_path)
             print(f'Updated {ihid} -> {new_name}')
 
         except Exception as e:
             print(f'Error processing {ihid}: {e}')
+        finally:
+            if not comic_file.closed:
+                comic_file.close()
+            temp_file_path.unlink(missing_ok=True)
 
 
 if __name__ == '__main__':
@@ -509,7 +517,7 @@ if __name__ == '__main__':
         elif cmd_g == 'hitomi_update':
             try:
                 hitomi_id_g = int(sys.argv[2])
-                update_hitomi_file_hash([hitomi_id_g], db_g)
+                asyncio.run(update_hitomi_file_hash([hitomi_id_g], db_g))
             except (IndexError, ValueError):
                 print("Invalid Hitomi ID")
 
