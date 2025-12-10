@@ -114,57 +114,69 @@ function switchPage(event) {
     requestDocuments(targetPage);
 }
 
+
+/**
+ * @typedef {{target_tag: number, author_name: string, target_page: number}} SearchArgs
+ */
+
 /**
  *
  * @param {number} target_page
- * @return {{document_tag: number, author: string, target_page: number}}
+ * @return SearchArgs
  */
 
 function updateSearchArgs(target_page) {
     if (target_page === null)target_page = 1;
-    let searchArgs = {document_tag: 0, author: '', target_page: target_page};
-    const tagName = document.getElementById('dropdown-input').value;
-    const tagSelectList = document.getElementById('dropdown-list');
-    let tagID = 0;
-    for (let i = 0; i < tagSelectList.children.length; i++) {
-        let tagSelect = tagSelectList.children[i];
-        if (tagSelect.textContent === tagName) tagID = tagSelect.getAttribute('tag-id');
+    let searchArgs = {target_tag: 0, author_name: '', target_page: target_page};
+    const tag_name = document.getElementById('dropdown-input').value;
+    const tag_select_list = document.getElementById('dropdown-list');
+    let tag_id = 0;
+    for (let i = 0; i < tag_select_list.children.length; i++) {
+        let tag_select = tag_select_list.children[i];
+        if (tag_select.textContent === tag_name) {
+            tag_id = tag_select.getAttribute('tag-id');
+            console.log('已查询到指定tag: ' + tag_id)
+        }
     }
-    searchArgs.author = document.getElementById('document-input').value;
-    searchArgs.document_tag = tagID;
+    searchArgs.author_name = document.getElementById('document-input').value;
+    searchArgs.target_tag = tag_id;
     return searchArgs;
 }
 
 /**
- *
- * @param {Array}item
+ * 将标签绑定到指定的文档上
+ * @param {DocumentInfo} document_info - 传入的文档信息对象
+ * @param {Array<TagInfo>} tags_info - 传入的标签信息对象
+ * @param {Array<string>} author_list - 传入的作者信息对象
+ * @returns {void}
  */
-
-function createDocument(item) {
-    console.log(item);
+function createDocument(document_info, tags_info, author_list) {
+    console.log(document_info, tags_info, author_list);
     let document_item = document.createElement('div');
     document_item.className = 'list-item';
     let document_thumbnail = document.createElement('img');
     document_thumbnail.className = 'thumbnail';
-    document_thumbnail.src = '/document_content/' + item[0] + '/-1';
+    document_thumbnail.src = '/document_content/' + document_info.document_id + '/-1';
     document_item.appendChild(document_thumbnail);
     let document_details = document.createElement('div');
     document_details.className = 'details'
     let document_title = document.createElement('h3');
     let document_link = document.createElement('a');
-    document_link.href = '/show_document/' + item[0];
-    document_link.textContent = item[1];
+    document_link.href = '/show_document/' + document_info.document_id;
+    document_link.textContent = document_info.title;
     document_title.appendChild(document_link);
     document_details.appendChild(document_title);
-    let document_author = document.createElement('button');
-    document_author.addEventListener("click", submitAuthorSearch);
-    document_author.textContent = item[5];
-    document_details.appendChild(document_author);
+    author_list.forEach(author_name => {
+        let document_author = document.createElement('button');
+        document_author.addEventListener("click", submitAuthorSearch);
+        document_author.textContent = author_name;
+        document_details.appendChild(document_author);
+    })
     let document_tags = document.createElement('div');
     document_tags.className = 'tag-info';
-    item[6].forEach(tag => {
+    tags_info.forEach(tag => {
         let single_tag = document.createElement('span');
-        single_tag.textContent = tag;
+        single_tag.textContent = tag.name;
         document_tags.appendChild(single_tag);
     })
     document_details.appendChild(document_tags);
@@ -173,7 +185,28 @@ function createDocument(item) {
 }
 
 /**
- * @typedef {{total_count: number, documents_info: Array<Array>}} DocumentInfos
+ * @typedef {Object} DocumentInfo
+ * @property {number} document_id - 对应 document_id (PK)
+ * @property {string} title - 对应 title
+ * @property {string} file_path - 对应 file_path
+ * @property {?string} series_name - 对应 Optional[str]，使用 ? 表示可为 null
+ * @property {?number} volume_number - 对应 Optional[int]
+ */
+
+/**
+ * @typedef {Object} TagInfo
+ * @property {number} tag_id - 对应 tag_id (PK)
+ * @property {string} name - 对应 name
+ * @property {?string} hitomi_alter - 对应 Optional[str]
+ * @property {?number} group_id - 对应 Optional[int]
+ */
+
+/**
+ * @typedef {Object} SearchDocumentResponse
+ * @property {number} total_count
+ * @property {{[doc_id: number]: Array<string>}} document_authors
+ * @property {{[doc_id: number]: DocumentInfo}} documents_info - 对应 dict[int, Document]
+ * @property {{[doc_id: number]: Array<TagInfo>}} tags - 对应 dict[int, list[Tag]]，注意这里是数组
  */
 
 /**
@@ -181,23 +214,38 @@ function createDocument(item) {
  * @param {number} target_page
  */
 function requestDocuments(target_page) {
-    let searchArgs = updateSearchArgs(target_page);
+    let search_args = updateSearchArgs(target_page);
+    let search_args_json = JSON.stringify(search_args);
+    console.log('查询参数: ' + search_args_json)
     $.ajax({
         type: 'POST',
         url: '/search_document',
-        data: JSON.stringify(searchArgs),
+        data: search_args_json,
         contentType: 'application/json;charset=UTF-8',
         success: function (response) {
             console.log('search_document 成功返回');
             documentsContainer.innerHTML = '';
             let document_count = response.total_count;
-            let documents_info = response.documents_info;
             const total_page_item = document.getElementById('total-page');
             total_page_item.textContent = Math.ceil(document_count / 10).toString();
-            documents_info.forEach(createDocument);
+            console.log('开始构造文档列表')
+            let document_map = response.documents_info;
+            let tag_map = response.tags;
+            let author_map = response.document_authors;
+            // 2. 遍历文档字典
+            // 使用 Object.keys() 或 for...in 均可，这里推荐 Object.entries 以同时获取 ID 和 对象
+            Object.entries(document_map).forEach(([key, doc_info]) => {
+                // 注意：Object 的键在 JS 运行时是字符串，如果需要数字类型可能需要 parseInt(key)
+                // 但作为索引访问对象属性时，字符串 key 是安全的
+                // 3. 通过 ID 在 tags 字典中查找对应的标签数组
+                // 添加 || [] 是防御性编程，防止某个文档没有对应的标签记录导致报错
+                let relevant_tags = tag_map[key] || [];
+                let relevent_authors = author_map[key] || [];
+                createDocument(doc_info, relevant_tags, relevent_authors);
+            });
         }
     })
     const now_page_item = document.getElementById('now-page');
-    now_page_item.textContent = searchArgs.target_page.toString();
+    now_page_item.textContent = search_args.target_page.toString();
 }
 

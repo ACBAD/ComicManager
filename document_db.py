@@ -13,29 +13,7 @@ from sqlmodel.sql._expression_select_cls import SelectOfScalar
 import document_sql
 
 try:
-    from site_utils import getFileHash, archived_document_path, getZipNamelist, getZipImage, thumbnail_folder
-
-
-    def generate_thumbnail(document_id: int):
-        with DocumentDB() as idb:
-            doc = idb.get_document_by_id(document_id)
-            if not doc:
-                return
-            filename = doc.file_path
-
-        file_path = os.path.join(archived_document_path, filename)
-        pic_list = getZipNamelist(file_path)
-        assert isinstance(pic_list, list)
-        if not pic_list:
-            return
-
-        thumbnail_content = getZipImage(file_path, pic_list[0])
-        if not os.path.exists(thumbnail_folder):
-            os.makedirs(thumbnail_folder)
-
-        with open(os.path.join(thumbnail_folder, f'{document_id}.webp'), "wb") as fu:
-            fu.write(thumbnail_content.read())
-
+    from site_utils import getFileHash, archived_document_path, get_zip_namelist, get_zip_image, thumbnail_folder
 
     def check_thumbnails():
         if not os.path.exists(thumbnail_folder):
@@ -62,11 +40,11 @@ try:
             filename = doc.file_path
 
         file_path = os.path.join(archived_document_path, filename)
-        pic_list = getZipNamelist(file_path)
+        pic_list = get_zip_namelist(file_path)
         assert isinstance(pic_list, list)
         if pic_index >= len(pic_list):
             return None
-        return getZipImage(file_path, pic_list[pic_index])
+        return get_zip_image(file_path, pic_list[pic_index])
 
 except ImportError:
     print('非网站环境,哈希函数fallback至默认,document路径,thumbnail目录,zip相关函数置空')
@@ -114,8 +92,7 @@ class DocumentDB:
         """返回查询所有文档的 Builder"""
         return sqlmodel.select(document_sql.Document).order_by(sqlmodel.desc(document_sql.Document.document_id))
 
-    @staticmethod
-    def query_by_tags(tags: List[int] | List[document_sql.Tag],
+    def query_by_tags(self, tags: List[int] | List[document_sql.Tag],
                       match_all: bool = True) -> SelectOfScalar[document_sql.Document]:
         tag_ids: set[int] = set()
         for tag_instance in tags:
@@ -124,7 +101,7 @@ class DocumentDB:
             if isinstance(tag_instance, document_sql.Tag):
                 tag_ids.add(tag_instance.id)
         if not tag_ids:
-            return sqlmodel.select(document_sql.Document)
+            return self.query_all_documents()
         # 1. 基础 Join
         statement = (
             sqlmodel.select(document_sql.Document)
@@ -144,9 +121,10 @@ class DocumentDB:
             statement = statement.distinct()
         return statement.order_by(sqlmodel.desc(document_sql.Document.document_id))
 
-    @staticmethod
-    def query_by_author(author_name: str) -> SelectOfScalar[document_sql.Document]:
+    def query_by_author(self, author_name: str) -> SelectOfScalar[document_sql.Document]:
         """返回按作者筛选的 Builder"""
+        if not author_name:
+            return self.query_all_documents()
         stmt = (
             sqlmodel.select(document_sql.Document)
             .join(document_sql.DocumentAuthorLink)
