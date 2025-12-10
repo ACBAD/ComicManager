@@ -1,5 +1,4 @@
 import asyncio
-import io
 import os
 import shutil
 import sys
@@ -13,45 +12,13 @@ from sqlmodel.sql._expression_select_cls import SelectOfScalar
 import document_sql
 
 try:
-    from site_utils import getFileHash, archived_document_path, get_zip_namelist, get_zip_image, thumbnail_folder
-
-    def check_thumbnails():
-        if not os.path.exists(thumbnail_folder):
-            os.makedirs(thumbnail_folder)
-        with DocumentDB() as idb:
-            # 获取所有 ID
-            ids = idb.session.exec(sqlmodel.select(document_sql.Document.document_id)).all()
-
-        for doc_id in ids:
-            if os.path.exists(f'{thumbnail_folder}/{doc_id}.webp'):
-                continue
-            print(f'Document {doc_id} has no thumbnail')
-            try:
-                generate_thumbnail(int(doc_id))
-            except Exception as e:
-                print(f"Failed to generate thumbnail for {doc_id}: {e}")
-
-
-    def get_document_content(document_id: int, pic_index: int) -> Optional[io.BytesIO]:
-        with DocumentDB() as idb:
-            doc = idb.get_document_by_id(document_id)
-            if not doc:
-                return None
-            filename = doc.file_path
-
-        file_path = os.path.join(archived_document_path, filename)
-        pic_list = get_zip_namelist(file_path)
-        assert isinstance(pic_list, list)
-        if pic_index >= len(pic_list):
-            return None
-        return get_zip_image(file_path, pic_list[pic_index])
-
+    from site_utils import get_file_hash, archived_document_path, get_zip_namelist, get_zip_image, thumbnail_folder
 except ImportError:
     print('非网站环境,哈希函数fallback至默认,document路径,thumbnail目录,zip相关函数置空')
     import hashlib
 
 
-    def getFileHash(file_path: Union[str, Path], chunk_size: int = 8192):
+    def get_file_hash(file_path: Union[str, Path], chunk_size: int = 8192):
         hash_md5 = hashlib.md5()
         with open(file_path, 'rb') as fi:
             while chunk := fi.read(chunk_size):
@@ -213,6 +180,10 @@ class DocumentDB:
         tags = self.session.exec(sqlmodel.select(document_sql.Tag).where(document_sql.Tag.group_id == group_id)).all()
         return tags
 
+    def get_tag_by_hitomi(self, hitomi_name: str):
+        tag = self.session.exec(sqlmodel.select(document_sql.Tag).where(document_sql.Tag.hitomi_alter == hitomi_name)).one()
+        return tag
+
     # --- 写入与修改方法 ---
 
     def add_source(self, name: str, base_url: Optional[str] = None) -> Optional[int]:
@@ -222,6 +193,17 @@ class DocumentDB:
             self.session.commit()
             self.session.refresh(source)
             return source.source_id
+        except Exception as ie:
+            print(ie)
+            self.session.rollback()
+            return None
+
+    def add_tag(self, tag: document_sql.Tag) -> int | None:
+        try:
+            self.session.add(tag)
+            self.session.commit()
+            self.session.refresh(tag)
+            return tag.tag_id
         except Exception as ie:
             print(ie)
             self.session.rollback()
@@ -237,53 +219,47 @@ class DocumentDB:
 
         # 验证
         if series and not volume:
-            return -1
+            raise ValueError('添加系列后必须添加卷')
         if volume and not str(volume).isdigit():
-            return -2
+            raise ValueError('卷号必须为数字')
 
         filepath_str = os.path.basename(filepath)
         if check_file and not os.path.exists(filepath):
-            return -3
+            raise FileNotFoundError(f'{filepath} 未找到')
 
-        try:
-            doc = document_sql.Document(
-                document_id=given_id,
-                title=title,
-                file_path=filepath_str,
-                series_name=series,
-                volume_number=volume
-            )
-            self.session.add(doc)
-            self.session.commit()
-            self.session.refresh(doc)  # 获取生成的 ID
+        doc = document_sql.Document(
+            document_id=given_id,
+            title=title,
+            file_path=filepath_str,
+            series_name=series,
+            volume_number=volume
+        )
+        self.session.add(doc)
+        self.session.commit()
+        self.session.refresh(doc)  # 获取生成的 ID
 
-            # 处理作者
-            if authors:
-                for author_name in authors:
-                    # 查找或创建作者
-                    auth = self.session.exec(
-                        sqlmodel.select(document_sql.Author).where(document_sql.Author.name == author_name)).first()
-                    if not auth:
-                        auth = document_sql.Author(name=author_name)
-                        self.session.add(auth)
-                        self.session.commit()
-                        self.session.refresh(auth)
+        # 处理作者
+        if authors:
+            for author_name in authors:
+                # 查找或创建作者
+                auth = self.session.exec(
+                    sqlmodel.select(document_sql.Author).where(document_sql.Author.name == author_name)).first()
+                if not auth:
+                    auth = document_sql.Author(name=author_name)
+                    self.session.add(auth)
+                    self.session.commit()
+                    self.session.refresh(auth)
 
-                    # 建立关联
-                    link = document_sql.DocumentAuthorLink(document_id=doc.document_id, author_id=auth.author_id)
-                    self.session.add(link)
+                # 建立关联
+                link = document_sql.DocumentAuthorLink(document_id=doc.document_id, author_id=auth.author_id)
+                self.session.add(link)
 
-            # 处理来源
-            if source:
-                self.link_document_source(doc.document_id, source['source_id'], source['source_document_id'])
+        # 处理来源
+        if source:
+            self.link_document_source(doc.document_id, source['source_id'], source['source_document_id'])
 
-            self.session.commit()
-            return doc.document_id
-
-        except Exception as e:
-            print(f"Error adding document: {e}")
-            self.session.rollback()
-            return -4
+        self.session.commit()
+        return doc.document_id
 
     def edit_document(self, doc_id: int,
                       title: Optional[str] = None,
@@ -360,6 +336,17 @@ class DocumentDB:
             self.session.rollback()
             return False
 
+    def link_document_tag(self, doc_id: int, tag_id: int) -> bool:
+        try:
+            link = document_sql.DocumentTagLink(document_id=doc_id, tag_id=tag_id)
+            self.session.add(link)
+            self.session.commit()
+            return True
+        except Exception as e:
+            print(e)
+            self.session.rollback()
+            return False
+
     def get_wandering_files(self, base_path: Union[str, Path]) -> set[Path]:
         base_path = Path(base_path)
         if not base_path.exists():
@@ -386,7 +373,7 @@ def fix_file_hash(idb: DocumentDB, base_path: Union[str, Path]):
     test_files = [file for file in base_path.iterdir() if file.is_file()]
 
     for test_file in test_files:
-        file_hash = getFileHash(test_file)
+        file_hash = get_file_hash(test_file)
         name_hash = test_file.stem  # 假设文件名就是 hash.ext
 
         if file_hash == name_hash:
@@ -445,7 +432,7 @@ async def update_hitomi_file_hash(hitomi_id_list: list[int], idb: DocumentDB):
             if not dl_result:
                 raise RuntimeError("Download failed")
 
-            file_hash = getFileHash(temp_file_path)
+            file_hash = get_file_hash(temp_file_path)
             new_name = f"{file_hash}.zip"
             target_path = archived_document_path / new_name
 

@@ -1,6 +1,6 @@
 import os
 try:
-    from site_utils import getFileHash, archived_comic_path
+    from site_utils import get_file_hash, archived_comic_path
 except ImportError:
     print('非网站环境,哈希函数fallback至默认')
     import hashlib
@@ -43,7 +43,7 @@ def recoveryFromLocalDB(db: ComicDB):
         remaining_base_path = Path(hitomi_instance.storage_path)
         for file in remaining_files:
             remaining_file_path = remaining_base_path / Path(file)
-            remaining_file_hash = getFileHash(remaining_file_path)
+            remaining_file_hash = get_file_hash(remaining_file_path)
             comic_id = db.searchComicByFile(f'{remaining_file_hash}.zip')
             if comic_id:
                 print(f'文件名:{file},哈希{remaining_file_hash}寻找到匹配的comic,ID为{comic_id}')
@@ -79,7 +79,7 @@ def recoveryFromLocalDB(db: ComicDB):
         comic = hitomi_instance.get_comic(source_comic_id)
         download_path_str = comic.download(max_threads=5)
         download_path = Path(hitomi_instance.storage_path) / Path(download_path_str)
-        download_file_hash = getFileHash(download_path.as_posix())
+        download_file_hash = get_file_hash(download_path.as_posix())
         if download_file_hash != file_hash:
             print(f'哈希{download_file_hash}不匹配数据库记录哈希{file_hash},已存为滞留文件')
             continue

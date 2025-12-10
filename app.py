@@ -122,7 +122,6 @@ def search_document(request: SearchDocumentRequest,
         target_page = 1
     else:
         target_page = request.target_page
-    print(request)
     if request.target_tag:
         total_count, documents_info = db.paginate_query(db.query_by_tags([request.target_tag]),
                                                         target_page, PAGE_COUNT)

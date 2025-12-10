@@ -38,7 +38,7 @@ def get_zip_image(zip_path: Path, pic_name: str) -> Optional[io.BytesIO]:
             return img_bytes
 
 
-def getFileHash(file_path: str | Path, chunk_size: int = 8192):
+def get_file_hash(file_path: Path, chunk_size: int = 8192):
     hash_md5 = hashlib.md5()
     with open(file_path, 'rb') as f:
         while chunk := f.read(chunk_size):

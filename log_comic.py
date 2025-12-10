@@ -1,31 +1,38 @@
+import asyncio
 import shutil
 import os.path
 import sys
 import re
-from typing import Union, Optional
+from typing import Union
 from hitomiv2 import Hitomi
-import Comic_DB
-from site_utils import archived_comic_path, getFileHash
+import document_db
+from document_sql import *
+from site_utils import archived_document_path, get_file_hash
+from pathlib import Path
+
+RAW_PATH = Path('raw_document')
+if not RAW_PATH.exists():
+    RAW_PATH.mkdir()
 
 
-def log_tag(db_obj: Comic_DB.ComicDB, igroup_id: Union[None, int], hitomi_name) -> int:
-    db_query_result = db_obj.getTagByHitomi(hitomi_name)
+def log_tag(db_obj: document_db.DocumentDB, group_id: Union[None, int], hitomi_name: str) -> int:
+    db_query_result = db_obj.get_tag_by_hitomi(hitomi_name)
     if not db_query_result:
         print(f'hitomi name: {hitomi_name}')
-        if not igroup_id:
+        if not group_id:
             while True:
-                igroup_id = input('输入tag组id')
-                if igroup_id.isdigit():
-                    igroup_id = int(igroup_id)
+                group_id = input('输入tag组id')
+                if group_id.isdigit():
+                    group_id = int(group_id)
                     break
                 print('请输入纯数字id')
         tag_name = input('tag 原名')
-        add_result = db_obj.addTag(igroup_id, tag_name, hitomi_name)
-        if add_result < 0:
+        add_result = db_obj.add_tag(Tag(name=tag_name, group_id=group_id, hitomi_alter=hitomi_name))
+        if add_result is None:
             print(add_result)
         return add_result
     else:
-        return db_query_result  # getTagByHitomi returns a tuple
+        return db_query_result.tag_id  # getTagByHitomi returns a tuple
 
 
 def extract_hitomi_id(hitomi_url: str) -> Optional[str]:
@@ -37,12 +44,12 @@ def extract_hitomi_id(hitomi_url: str) -> Optional[str]:
     return None
 
 
-def log_comic(hitomi: Hitomi, db: Comic_DB.ComicDB, inner_hitomi_id: int):
+async def log_comic(hitomi: Hitomi, db: document_db.DocumentDB, hitomi_id: int):
     comic_tags_list = []
-    if db.searchComicBySource(inner_hitomi_id):
+    if db.search_by_source(str(hitomi_id)):
         print('已存在')
         return
-    comic = hitomi.get_comic(inner_hitomi_id)
+    comic = await hitomi.get_comic(hitomi_id)
     print(f'本子名: {comic.title}')
     print('开始录入大类tag')
     ip_names = comic.parodys
@@ -84,58 +91,62 @@ def log_comic(hitomi: Hitomi, db: Comic_DB.ComicDB, inner_hitomi_id: int):
             comic_authors_list.append(author['artist'])
 
     print('信息录入完成，开始获取源文件')
-    raw_path: str = hitomi.storage_path
-    if os.path.exists(os.path.join(raw_path, f'{inner_hitomi_id}.zip')):
+    raw_comic_path = RAW_PATH / Path(f'{hitomi_id}.zip')
+    dl_result = True
+    if raw_comic_path.exists():
         print('检测到源文件已存在，跳过下载')
-        download_name = f'{inner_hitomi_id}.zip'
     else:
-        download_name = comic.download(max_threads=5)
+        with open(raw_comic_path, 'wb') as cf:
+            dl_result = await comic.download(cf, max_threads=5)
 
-    if not download_name:
+    if not dl_result:
         print('下载失败')
         return
 
-    comic_hash = getFileHash(os.path.join(raw_path, download_name))
+    comic_hash = get_file_hash(raw_comic_path)
     hash_name = f'{comic_hash}.zip'
-    comp_path = os.path.join(raw_path, hash_name)
-    shutil.move(os.path.join(raw_path, download_name),
-                os.path.join(raw_path, hash_name))
+    final_path = archived_document_path / Path(hash_name)
+    if final_path.exists():
+        raise FileExistsError(f'文件 {final_path} 已存在')
 
-    comic_id = db.addComic(comic.title, comp_path, authors=comic_authors_list)
+    comic_id = db.add_document(comic.title, final_path, authors=comic_authors_list, check_file=False)
     if not comic_id or comic_id < 0:
         print(f'无法添加本子: {comic_id}')
-        os.remove(comp_path)
+        raw_comic_path.unlink()
         return
     print('开始链接tags')
     for tag in comic_tags_list:
-        link_result = db.linkTag2Comic(comic_id, tag)
+        link_result = db.link_document_tag(comic_id, tag)
         if link_result < 0:
             print(f'tag {tag}链接失败，错误id: {link_result}')
     print('开始链接源')
-    link_result = db.linkComic2Source(comic_id, 1, str(inner_hitomi_id))
+    link_result = db.link_document_source(comic_id, 1, str(hitomi_id))
     if link_result:
-        print(f'成功将本子与源ID{inner_hitomi_id}链接')
+        print(f'成功将本子与源ID{hitomi_id}链接')
     else:
         print('链接失败')
     print('录入完成，移入完成文件夹')
-    shutil.move(comp_path, os.path.join(archived_comic_path, hash_name))
+    shutil.move(raw_comic_path, final_path)
+
+
+async def init_hitomi(hitomi: Hitomi):
+    await hitomi.refresh_version()
 
 
 if __name__ == '__main__':
-    raw_path_g = 'raw_comic'
-    hitomi_instance = Hitomi(storage_path_fmt=raw_path_g, debug_fmt=False)
-
+    hitomi_instance = Hitomi(debug_fmt=False)
+    asyncio.run(init_hitomi(hitomi_instance))
     id_iter = None
     task_list = []
-    raw_file_list = os.listdir(raw_path_g)
+    raw_file_list = os.listdir(RAW_PATH)
     if len(sys.argv) > 1:
         task_list += sys.argv
         del task_list[0]
     if raw_file_list:
         print('检测到有未完成录入，加入任务列表')
         for raw_file in raw_file_list:
-            hitomi_id = raw_file.split('.')[0]
-            task_list.append(hitomi_id)
+            hitomi_id_g = raw_file.split('.')[0]
+            task_list.append(hitomi_id_g)
     if len(task_list) > 0:
         id_iter = iter(task_list)
     while True:
@@ -149,13 +160,13 @@ if __name__ == '__main__':
             print('结束录入')
             break
         if user_input.isdigit():
-            hitomi_id = user_input
+            hitomi_id_g = user_input
         else:
             extract_result = extract_hitomi_id(user_input)
             if not extract_result:
                 print('输入错误')
                 continue
-            hitomi_id = extract_result
-        with Comic_DB.ComicDB() as ldb:
-            log_comic(hitomi_instance, ldb, hitomi_id)
+            hitomi_id_g = extract_result
+        with document_db.DocumentDB() as db_g:
+            asyncio.run(log_comic(hitomi_instance, db_g, hitomi_id_g))
     print('录入完成')

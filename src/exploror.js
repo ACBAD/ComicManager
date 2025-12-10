@@ -234,13 +234,16 @@ function requestDocuments(target_page) {
             let author_map = response.document_authors;
             // 2. 遍历文档字典
             // 使用 Object.keys() 或 for...in 均可，这里推荐 Object.entries 以同时获取 ID 和 对象
-            Object.entries(document_map).forEach(([key, doc_info]) => {
+            Object.entries(document_map)
+                .sort((a, b) => parseInt(b[0]) - parseInt(a[0]))
+                .forEach(([key, doc_info]) => {
                 // 注意：Object 的键在 JS 运行时是字符串，如果需要数字类型可能需要 parseInt(key)
                 // 但作为索引访问对象属性时，字符串 key 是安全的
                 // 3. 通过 ID 在 tags 字典中查找对应的标签数组
                 // 添加 || [] 是防御性编程，防止某个文档没有对应的标签记录导致报错
                 let relevant_tags = tag_map[key] || [];
                 let relevent_authors = author_map[key] || [];
+                console.log('开始构造文档' + key)
                 createDocument(doc_info, relevant_tags, relevent_authors);
             });
         }
