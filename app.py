@@ -8,11 +8,13 @@ import document_db
 from document_sql import *
 from site_utils import archived_document_path, get_zip_namelist, get_zip_image, thumbnail_folder
 from fastapi.templating import Jinja2Templates
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.openapi.utils import get_openapi
 from pathlib import Path
 from pydantic import BaseModel
 from email.utils import formatdate
 
-app = fastapi.FastAPI()
+app = fastapi.FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
 DEFAULT_AUTH_TOKEN = 'HayaseYuuka'
 REQUIRED_AUTH_COOKIE = {"password": DEFAULT_AUTH_TOKEN}
@@ -60,6 +62,21 @@ class RequireCookies:
 def get_db():
     with document_db.DocumentDB() as db:
         yield db
+
+
+@app.get("/openapi.json",
+         include_in_schema=False,
+         dependencies=[fastapi.Depends(RequireCookies())])
+async def get_open_api_endpoint():
+    return fastapi.responses.JSONResponse(get_openapi(title="My Private API", version="1.0.0", routes=app.routes))
+
+
+# 4. 手动实现 /docs，并加上依赖保护
+@app.get("/docs",
+         include_in_schema=False,
+         dependencies=[fastapi.Depends(RequireCookies())])
+async def get_documentation():
+    return get_swagger_ui_html(openapi_url="/openapi.json", title="docs")
 
 
 @app.get("/admin/{subpath:path}")
