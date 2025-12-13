@@ -4,8 +4,8 @@ import shutil
 import sys
 from pathlib import Path
 from typing import Optional, Union, List, Iterable, Sequence
-
 import sqlmodel
+from sqlalchemy.exc import NoResultFound
 # noinspection PyProtectedMember
 from sqlmodel.sql._expression_select_cls import SelectOfScalar
 
@@ -180,9 +180,11 @@ class DocumentDB:
         tags = self.session.exec(sqlmodel.select(document_sql.Tag).where(document_sql.Tag.group_id == group_id)).all()
         return tags
 
-    def get_tag_by_hitomi(self, hitomi_name: str):
-        tag = self.session.exec(sqlmodel.select(document_sql.Tag).where(document_sql.Tag.hitomi_alter == hitomi_name)).one()
-        return tag
+    def get_tag_by_hitomi(self, hitomi_name: str) -> Optional[document_sql.Tag]:
+        try:
+            return self.session.exec(sqlmodel.select(document_sql.Tag).where(document_sql.Tag.hitomi_alter == hitomi_name)).one()
+        except NoResultFound:
+            return None
 
     # --- 写入与修改方法 ---
 
@@ -198,12 +200,12 @@ class DocumentDB:
             self.session.rollback()
             return None
 
-    def add_tag(self, tag: document_sql.Tag) -> int | None:
+    def add_tag(self, tag: document_sql.Tag) -> Optional[document_sql.Tag]:
         try:
             self.session.add(tag)
             self.session.commit()
             self.session.refresh(tag)
-            return tag.tag_id
+            return tag
         except Exception as ie:
             print(ie)
             self.session.rollback()
@@ -336,10 +338,14 @@ class DocumentDB:
             self.session.rollback()
             return False
 
-    def link_document_tag(self, doc_id: int, tag_id: int) -> bool:
+    def link_document_tag(self, doc_id: int, tag: int | document_sql.Tag) -> bool:
         try:
+            if isinstance(tag, int):
+                tag_id = tag
+            else:
+                tag_id = tag.tag_id
             link = document_sql.DocumentTagLink(document_id=doc_id, tag_id=tag_id)
-            self.session.add(link)
+            self.session.merge(link)
             self.session.commit()
             return True
         except Exception as e:

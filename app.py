@@ -1,3 +1,4 @@
+import datetime
 import os
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -79,7 +80,7 @@ async def get_documentation():
     return get_swagger_ui_html(openapi_url="/openapi.json", title="docs")
 
 
-@app.get("/admin/{subpath:path}")
+@app.get("/admin/{subpath:path}", include_in_schema=False)
 async def admin(subpath: str = ""):
     return fastapi.responses.FileResponse(
         path='boom.gz',
@@ -96,11 +97,10 @@ async def get_document_db() -> fastapi.responses.FileResponse:
     return fastapi.responses.FileResponse(path='documents.db')
 
 
-@app.get('/HayaseYuuka')
+@app.get('/HayaseYuuka', include_in_schema=False)
 async def get_auth():
-    resp = fastapi.responses.RedirectResponse(status_code=fastapi.status.HTTP_302_FOUND,
-                                              url='/')
-    resp.set_cookie(key='password', value=DEFAULT_AUTH_TOKEN)
+    resp = fastapi.responses.RedirectResponse(status_code=fastapi.status.HTTP_302_FOUND, url='/')
+    resp.set_cookie(key='password', value=DEFAULT_AUTH_TOKEN, max_age=3600 * 24 * 365 * 10)
     return resp
 
 
