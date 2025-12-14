@@ -61,7 +61,7 @@ if hitomi_router:
          include_in_schema=False,
          dependencies=[fastapi.Depends(RequireCookies())])
 async def get_open_api_endpoint():
-    return fastapi.responses.JSONResponse(get_openapi(title="My Private API", version="1.0.0", routes=app.routes))
+    return fastapi.responses.JSONResponse(get_openapi(title="DocumentManagerAPI", version="1.0.0", routes=app.routes))
 
 
 # 4. 手动实现 /docs，并加上依赖保护
