@@ -9,7 +9,7 @@ from pathlib import Path
 from shared import RequireCookies, get_db, task_status, TaskStatus
 import document_db
 import shutil
-from pydantic import BaseModel, RootModel
+from pydantic import BaseModel
 from typing import Optional
 
 
