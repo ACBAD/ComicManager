@@ -14,7 +14,7 @@ from fastapi.templating import Jinja2Templates
 from pathlib import Path
 from pydantic import BaseModel
 from email.utils import formatdate
-from shared import RequireCookies, DEFAULT_AUTH_TOKEN, get_db, PAGE_COUNT, task_status
+from shared import RequireCookies, DEFAULT_AUTH_TOKEN, get_db, PAGE_COUNT, task_status, TaskStatus
 import asyncio
 
 hitomi_router = None
@@ -125,18 +125,14 @@ class SearchDocumentResponse(BaseModel):
     tags: dict[int, list[Tag]]
 
 
-@app.get('/get_document/{query_arg}',
-         response_class=fastapi.responses.RedirectResponse,
-         status_code=fastapi.status.HTTP_307_TEMPORARY_REDIRECT,
-         dependencies=[fastapi.Depends(RequireCookies())])
-def get_document(query_arg: str, db: document_db.DocumentDB = fastapi.Depends(get_db)):
-    document = db.search_by_source(query_arg)
-    if document:
-        return fastapi.responses.RedirectResponse(f'/show_document/{document.document_id}')
-    return fastapi.responses.RedirectResponse(f'/add_document/{query_arg}')
-
-
 @app.get('/add_document',
+         responses={
+             fastapi.status.HTTP_307_TEMPORARY_REDIRECT: {
+                 "description": "重定向到添加模块",
+                 "content": {}
+             }
+         },
+         status_code=fastapi.status.HTTP_307_TEMPORARY_REDIRECT,
          dependencies=[fastapi.Depends(RequireCookies())])
 async def add_document_gateway(source_document_id: str, source_id: int):
     if hitomi_router is None:
@@ -146,8 +142,7 @@ async def add_document_gateway(source_document_id: str, source_id: int):
             detail="Hitomi module is not loaded."
         )
 
-    return fastapi.responses.RedirectResponse(url=f'/comic/add?source_id={source_id}&source_document_id={source_document_id}',
-                                              status_code=fastapi.status.HTTP_307_TEMPORARY_REDIRECT)
+    return fastapi.responses.RedirectResponse(url=f'/comic/add?source_id={source_id}&source_document_id={source_document_id}')
 
 
 @app.get('/show_status',
@@ -159,7 +154,7 @@ async def get_download_status():
 
 @app.get('/download_status',
          dependencies=[fastapi.Depends(RequireCookies())])
-async def get_status():
+async def get_status() -> dict[str, TaskStatus]:
     return task_status
 
 

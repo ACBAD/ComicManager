@@ -15,18 +15,6 @@ REDIRECT_TARGET = "login_page"
 PAGE_COUNT = 10
 
 
-class AddComicRequest(BaseModel):
-    source_id: int
-    source_document_id: str
-    inexistent_tags: Optional[dict[str, tuple[Optional[int], str]]] = None
-
-
-class AddComicResponse(BaseModel):
-    success: bool
-    message: Optional[str] = None
-    redirect_url: Optional[str] = None
-
-
 class TaskStatus(BaseModel):
     percent: int | float = 0
     message: Optional[str] = None

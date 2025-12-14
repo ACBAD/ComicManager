@@ -1,15 +1,29 @@
 import asyncio
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi import status
-
 import document_sql
 import hitomiv2
 import log_comic
 from pathlib import Path
-from shared import AddComicRequest, AddComicResponse, RequireCookies, get_db, task_status, TaskStatus
+from shared import RequireCookies, get_db, task_status, TaskStatus
 import document_db
 import shutil
+from pydantic import BaseModel, RootModel
+from typing import Optional
+
+
+class AddComicRequest(BaseModel):
+    source_id: int
+    source_document_id: str
+    inexistent_tags: Optional[dict[str, tuple[Optional[int], str]]] = None
+
+
+class AddComicResponse(BaseModel):
+    success: bool
+    message: Optional[str] = None
+    redirect_url: Optional[str] = None
+
 
 # 初始化 Router
 router = APIRouter(tags=["Hitomi"])
@@ -81,7 +95,9 @@ async def implement_document(comic: hitomiv2.Comic, tags: list[document_sql.Tag]
 
 
 # noinspection PyUnusedLocal
-@router.get('/add', dependencies=[Depends(RequireCookies())])
+@router.get('/add',
+            response_class=HTMLResponse,
+            dependencies=[Depends(RequireCookies())])
 async def add_comic(source_id: int, source_document_id: str):
     return FileResponse('templates/add_comic.html')
 
@@ -126,10 +142,16 @@ async def add_comic_post(request: AddComicRequest,
     return AddComicResponse(success=True, redirect_url='/show_status')
 
 
-@router.get('/get_missing_tags', dependencies=[Depends(RequireCookies())])
+class MissingTag(BaseModel):
+    name: str
+    need_group: bool
+
+
+@router.get('/get_missing_tags',
+            dependencies=[Depends(RequireCookies())])
 async def get_missing_tags(source_id: int,
                            source_document_id: str,
-                           db: document_db.DocumentDB = Depends(get_db)):
+                           db: document_db.DocumentDB = Depends(get_db)) -> list[MissingTag]:
     if source_id != 1:
         raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
     db_result = db.search_by_source(source_document_id=source_document_id)
@@ -141,9 +163,9 @@ async def get_missing_tags(source_id: int,
         raise HTTPException(status_code=404, detail=str(e))
 
     plain_tags = log_comic.extract_generic_tags(hitomi_result)
-    tags: list[dict[str, str]] = []
+    tags: list[MissingTag] = []
     for tag in plain_tags:
         if tag.query_db(db):
             continue
-        tags.append({'name': tag.hitomi_name, 'need_group': False if tag.group_id else True})
+        tags.append(MissingTag(name=tag.hitomi_name, need_group=False if tag.group_id else True))
     return tags
