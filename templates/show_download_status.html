@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文献下载监控中心</title>
+    <style>
+        /* 样式保持不变，直接复用上一版的高质量样式 */
+        :root {
+            --primary-color: #2563eb;
+            --danger-color: #dc2626;
+            --success-color: #16a34a;
+            --bg-color: #f3f4f6;
+            --card-bg: #ffffff;
+            --text-main: #1f2937;
+            --text-sub: #6b7280;
+            --border-radius: 8px;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 40px 20px;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        header {
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin: 0;
+            color: var(--text-main);
+        }
+
+        .status-indicator {
+            font-size: 0.875rem;
+            padding: 4px 12px;
+            border-radius: 9999px;
+            background-color: #e5e7eb;
+            color: var(--text-sub);
+            transition: all 0.3s;
+        }
+        .status-indicator.live {
+            background-color: #dcfce7;
+            color: var(--success-color);
+        }
+        .status-indicator.error {
+            background-color: #fee2e2;
+            color: var(--danger-color);
+        }
+
+        #task-list {
+            display: grid;
+            gap: 16px;
+        }
+
+        .task-card {
+            background-color: var(--card-bg);
+            border-radius: var(--border-radius);
+            padding: 20px;
+            box-shadow: var(--shadow);
+            transition: transform 0.2s, opacity 0.3s; /* 增加透明度过渡 */
+        }
+
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .task-name {
+            font-size: 1rem;
+            word-break: break-all; /* 防止长文件名撑破布局 */
+        }
+
+        .task-percent-text {
+            font-family: 'Monaco', 'Consolas', monospace;
+            color: var(--text-sub);
+            min-width: 3.5em;
+            text-align: right;
+        }
+
+        .progress-track {
+            height: 12px;
+            background-color: #e5e7eb;
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background-color: var(--primary-color);
+            border-radius: 6px;
+            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s;
+        }
+
+        .progress-fill.error {
+            background-color: var(--danger-color);
+        }
+
+        .error-msg {
+            margin-top: 10px;
+            font-size: 0.875rem;
+            color: var(--danger-color);
+            background-color: #fee2e2;
+            padding: 8px;
+            border-radius: 4px;
+            display: none;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: var(--text-sub);
+            padding: 40px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h2>文献下载进度</h2>
+        <div id="connection-status" class="status-indicator">正在连接...</div>
+    </header>
+
+    <div id="task-list">
+        <div class="empty-state">初始化数据中...</div>
+    </div>
+</div>
+
+<script>
+    const CONFIG = {
+        apiEndpoint: '/download_status',
+        pollInterval: 1000
+    };
+
+    /**
+     * 渲染主逻辑
+     * @param {Object} tasksDict - 后端返回的字典 { "name": {percent: 10, message: null} }
+     */
+    function render(tasksDict) {
+        const container = document.getElementById('task-list');
+
+        // 字典转 Key 数组，方便后续处理
+        const newTaskNames = Object.keys(tasksDict);
+
+        // 处理空状态
+        if (newTaskNames.length === 0) {
+            container.innerHTML = '<div class="empty-state">当前无下载任务</div>';
+            return;
+        }
+
+        // 如果之前是空状态，清空容器
+        if (container.querySelector('.empty-state')) {
+            container.innerHTML = '';
+        }
+
+        // 1. 遍历新数据：更新现有任务 或 创建新任务
+        newTaskNames.forEach(name => {
+            const taskData = tasksDict[name];
+            // ID 生成逻辑：base64 编码 name 确保 HTML ID 合法性
+            const safeId = 'task-' + btoa(encodeURIComponent(name)).replace(/[^a-zA-Z0-9]/g, '');
+
+            let card = document.getElementById(safeId);
+
+            if (!card) {
+                card = createTaskElement(safeId, name);
+                container.appendChild(card);
+            }
+
+            updateTaskElement(card, taskData);
+        });
+
+        // 2. 清理逻辑：删除后端字典里已经不存在的任务
+        // 这里的判断逻辑变了：直接检查 DOM 元素的 name 属性是否存在于 tasksDict 中
+        Array.from(container.children).forEach(child => {
+            const name = child.getAttribute('data-name');
+            // 如果 DOM 里的 name 不在后端返回的字典 key 里，说明任务已结束
+            if (name && !tasksDict.hasOwnProperty(name)) {
+                child.remove();
+            }
+        });
+    }
+
+    function createTaskElement(id, name) {
+        const div = document.createElement('div');
+        div.className = 'task-card';
+        div.id = id;
+        div.setAttribute('data-name', name);
+
+        div.innerHTML = `
+            <div class="task-header">
+                <span class="task-name">${escapeHtml(name)}</span>
+                <span class="task-percent-text">0%</span>
+            </div>
+            <div class="progress-track">
+                <div class="progress-fill" style="width: 0%"></div>
+            </div>
+            <div class="error-msg"></div>
+        `;
+        return div;
+    }
+
+    function updateTaskElement(element, data) {
+        const fill = element.querySelector('.progress-fill');
+        const text = element.querySelector('.task-percent-text');
+        const errorBox = element.querySelector('.error-msg');
+
+        // 容错处理：防止后端数据缺失
+        const percent = data.percent || 0;
+        const message = data.message || '';
+
+        fill.style.width = `${percent}%`;
+        text.textContent = `${percent}%`;
+
+        if (message) {
+            fill.classList.add('error');
+            errorBox.textContent = message;
+            errorBox.style.display = 'block';
+        } else {
+            fill.classList.remove('error');
+            errorBox.style.display = 'none';
+        }
+    }
+
+    async function fetchStatus() {
+        const statusEl = document.getElementById('connection-status');
+
+        try {
+            const response = await fetch(CONFIG.apiEndpoint);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            const json = await response.json();
+
+            // 这里不需要再像之前那样处理数组兼容了，直接传字典
+            render(json);
+
+            statusEl.textContent = '监控中';
+            statusEl.className = 'status-indicator live';
+
+        } catch (error) {
+            console.error('Fetch error:', error);
+            statusEl.textContent = '连接断开';
+            statusEl.className = 'status-indicator error';
+        }
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const map = {
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, m => map[m]);
+    }
+
+    fetchStatus();
+    setInterval(fetchStatus, CONFIG.pollInterval);
+
+</script>
+</body>
+</html>

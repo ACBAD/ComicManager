@@ -374,12 +374,12 @@ class DocumentDB:
 # 独立的维护逻辑 (CLI Operations)
 # ==========================================
 
-def fix_file_hash(idb: DocumentDB, base_path: Union[str, Path]):
+async def fix_file_hash(idb: DocumentDB, base_path: Union[str, Path]):
     base_path = Path(base_path)
     test_files = [file for file in base_path.iterdir() if file.is_file()]
 
     for test_file in test_files:
-        file_hash = get_file_hash(test_file)
+        file_hash = await get_file_hash(test_file)
         name_hash = test_file.stem  # 假设文件名就是 hash.ext
 
         if file_hash == name_hash:
@@ -438,7 +438,7 @@ async def update_hitomi_file_hash(hitomi_id_list: list[int], idb: DocumentDB):
             if not dl_result:
                 raise RuntimeError("Download failed")
 
-            file_hash = get_file_hash(temp_file_path)
+            file_hash = await get_file_hash(temp_file_path)
             new_name = f"{file_hash}.zip"
             target_path = archived_document_path / new_name
 
@@ -483,7 +483,7 @@ if __name__ == '__main__':
             if not archived_document_path:
                 print("Archived path not set")
                 sys.exit(1)
-            fix_file_hash(db_g, archived_document_path)
+            asyncio.run(fix_file_hash(db_g, archived_document_path))
 
         elif cmd_g == 'hitomi_update':
             try:

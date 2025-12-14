@@ -5,6 +5,7 @@ import natsort
 import zipfile
 import io
 from pathlib import Path
+import aiofiles
 archived_document_path = Path('archived_documents')
 thumbnail_folder = Path('thumbnail')
 
@@ -38,9 +39,10 @@ def get_zip_image(zip_path: Path, pic_name: str) -> Optional[io.BytesIO]:
             return img_bytes
 
 
-def get_file_hash(file_path: Path, chunk_size: int = 8192):
+async def get_file_hash(file_path: Path, chunk_size: int = 65536) -> str:
     hash_md5 = hashlib.md5()
-    with open(file_path, 'rb') as f:
-        while chunk := f.read(chunk_size):
+    # 必须使用 async with 来打开文件
+    async with aiofiles.open(file_path, 'rb') as f:
+        while chunk := await f.read(chunk_size):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()

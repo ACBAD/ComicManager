@@ -161,7 +161,7 @@ async def log_comic(hitomi: Hitomi, db: document_db.DocumentDB, hitomi_id: int):
         print('下载失败')
         return
 
-    comic_hash = get_file_hash(raw_comic_path)
+    comic_hash = await get_file_hash(raw_comic_path)
     hash_name = f'{comic_hash}.zip'
     final_path = archived_document_path / Path(hash_name)
     if final_path.exists():

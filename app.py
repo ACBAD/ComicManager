@@ -1,4 +1,3 @@
-import datetime
 import os
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -8,61 +7,53 @@ import hashlib
 import document_db
 from document_sql import *
 from site_utils import archived_document_path, get_zip_namelist, get_zip_image, thumbnail_folder
-from fastapi.templating import Jinja2Templates
+from contextlib import asynccontextmanager
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
+from fastapi.templating import Jinja2Templates
 from pathlib import Path
 from pydantic import BaseModel
 from email.utils import formatdate
+from shared import RequireCookies, DEFAULT_AUTH_TOKEN, get_db, PAGE_COUNT, task_status, TaskStatus
+import asyncio
 
-app = fastapi.FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
-
-DEFAULT_AUTH_TOKEN = 'HayaseYuuka'
-REQUIRED_AUTH_COOKIE = {"password": DEFAULT_AUTH_TOKEN}
-REDIRECT_TARGET = "login_page"
+hitomi_router = None
 templates = Jinja2Templates(directory="templates")
-PAGE_COUNT = 10
+
+try:
+    import hitomi_plugin
+
+    hitomi_router = hitomi_plugin.router
+    print("Hitomi 插件加载成功")
+except ImportError as e:
+    print(f"Hitomi 插件未加载: {e}")
+    hitomi_plugin = None
+
+app_kwargs = {"docs_url": None, "redoc_url": None, "openapi_url": None}
 
 
-class RequireCookies:
-    """
-    鉴权依赖类：检查 Cookies 是否匹配。
-    如果失败，根据配置抛出 403 异常或执行重定向。
-    """
-
-    def __init__(
-            self,
-            required_cookies: Optional[dict[str, str]] = None,
-            redirect_endpoint: Optional[str] = None,
-            **redirect_args
-    ):
-        # 初始化配置，类似于原装饰器的外层函数
-        self.required_cookies = required_cookies or REQUIRED_AUTH_COOKIE
-        self.redirect_endpoint = redirect_endpoint or REDIRECT_TARGET
-        self.redirect_args = redirect_args
-
-    async def __call__(self, request: fastapi.Request):
-        """
-        依赖调用的核心逻辑，类似于原装饰器的内层函数
-        FastAPI 会自动注入 Request 对象
-        """
-        for cookie_name, expected_value in self.required_cookies.items():
-            actual_value = request.cookies.get(cookie_name)
-            # 核心验证逻辑
-            if actual_value is None or actual_value != expected_value:
-                # 场景 A: 如果你需要构建 API，通常直接返回 403 禁止访问
-                # 注意：raise 异常会中断请求处理，类似 flask.abort
-                raise fastapi.HTTPException(status_code=fastapi.status.HTTP_403_FORBIDDEN, detail=None)
-                # 场景 B: 如果你是做服务端渲染 (SSR) 且必须重定向 (原代码注释逻辑)
-                # url = request.url_for(self.redirect_endpoint, **self.redirect_args)
-                # return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
-        # 验证通过，返回 None 或需要的用户对象
-        return True
+@asynccontextmanager
+async def lifespan(app_instance: fastapi.FastAPI):
+    # 如果插件存在，启动插件的后台任务
+    hitomi_bg_task = None
+    if hitomi_plugin:
+        hitomi_bg_task = asyncio.create_task(hitomi_plugin.refresh_hitomi_loop())
+    yield
+    # 清理任务
+    if hitomi_bg_task:
+        hitomi_bg_task.cancel()
+        try:
+            await hitomi_bg_task
+        except Exception as le:
+            print(str(le))
 
 
-def get_db():
-    with document_db.DocumentDB() as db:
-        yield db
+# noinspection PyTypeChecker
+app_kwargs["lifespan"] = lifespan
+
+app = fastapi.FastAPI(**app_kwargs)
+if hitomi_router:
+    app.include_router(hitomi_router, prefix="/comic")
 
 
 @app.get("/openapi.json",
@@ -80,6 +71,7 @@ async def get_documentation():
     return get_swagger_ui_html(openapi_url="/openapi.json", title="docs")
 
 
+# noinspection PyUnusedLocal
 @app.get("/admin/{subpath:path}", include_in_schema=False)
 async def admin(subpath: str = ""):
     return fastapi.responses.FileResponse(
@@ -132,6 +124,44 @@ class SearchDocumentResponse(BaseModel):
     tags: dict[int, list[Tag]]
 
 
+@app.get('/get_document/{query_arg}',
+         response_class=fastapi.responses.RedirectResponse,
+         status_code=fastapi.status.HTTP_307_TEMPORARY_REDIRECT,
+         dependencies=[fastapi.Depends(RequireCookies())])
+def get_document(query_arg: str, db: document_db.DocumentDB = fastapi.Depends(get_db)):
+    document = db.search_by_source(query_arg)
+    if document:
+        return fastapi.responses.RedirectResponse(f'/show_document/{document.document_id}')
+    return fastapi.responses.RedirectResponse(f'/add_document/{query_arg}')
+
+
+@app.get('/add_document',
+         dependencies=[fastapi.Depends(RequireCookies())])
+async def add_document_gateway(source_document_id: str, source_id: int):
+    if hitomi_router is None:
+        # 如果没加载插件，返回 501 Not Implemented
+        raise fastapi.HTTPException(
+            status_code=fastapi.status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Hitomi module is not loaded."
+        )
+
+    return fastapi.responses.RedirectResponse(url=f'/comic/add?source_id={source_id}&source_document_id={source_document_id}',
+                                              status_code=fastapi.status.HTTP_307_TEMPORARY_REDIRECT)
+
+
+@app.get('/show_status',
+         response_class=fastapi.responses.HTMLResponse,
+         dependencies=[fastapi.Depends(RequireCookies())])
+async def get_download_status():
+    return fastapi.responses.FileResponse('templates/show_download_status.html')
+
+
+@app.get('/download_status',
+         dependencies=[fastapi.Depends(RequireCookies())])
+async def get_status():
+    return task_status
+
+
 @app.post('/search_document', dependencies=[fastapi.Depends(RequireCookies())])
 def search_document(request: SearchDocumentRequest,
                     db: document_db.DocumentDB = fastapi.Depends(get_db)) -> SearchDocumentResponse:
@@ -150,7 +180,8 @@ def search_document(request: SearchDocumentRequest,
     return SearchDocumentResponse(
         total_count=total_count,
         documents_info={document.document_id: document for document in documents_info},
-        document_authors={document.document_id: [author.name for author in document.authors] for document in documents_info},
+        document_authors={document.document_id: [author.name for author in document.authors] for document in
+                          documents_info},
         tags={document.document_id: document.tags for document in documents_info})
 
 
@@ -168,7 +199,8 @@ def generate_thumbnail(document_id: int, file_path: Path):
         fu.write(thumbnail_content.read())
 
 
-def create_content_response(request: fastapi.Request, document: Document, file_index: int) -> fastapi.responses.Response:
+def create_content_response(request: fastapi.Request, document: Document,
+                            file_index: int) -> fastapi.responses.Response:
     current_etag = hashlib.md5(f"{document.file_path}-{file_index}".encode()).hexdigest()
     if request.headers.get("if-none-match") == current_etag:
         return fastapi.Response(status_code=fastapi.status.HTTP_304_NOT_MODIFIED, headers={"ETag": current_etag})
@@ -212,7 +244,8 @@ def get_document_namelist(document_id: int,
         raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND)
     file_path = archived_document_path / document.file_path
     if not file_path.exists():
-        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND, detail='请先访问show页面提交下载任务')
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND,
+                                    detail='请先访问show页面提交下载任务')
     namelist = get_zip_namelist(file_path)
     if isinstance(namelist, str):
         raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND, detail=namelist)
@@ -222,7 +255,7 @@ def get_document_namelist(document_id: int,
 @app.get('/show_document/{document_id}',
          response_class=fastapi.responses.HTMLResponse,
          dependencies=[fastapi.Depends(RequireCookies())])
-def show_comic(
+def show_document(
         request: fastapi.Request,
         document_id: int,
         db: document_db.DocumentDB = fastapi.Depends(get_db)
@@ -237,7 +270,8 @@ def show_comic(
     if not document_path.exists():
         # 501 Not Implemented 语义上通常指服务器不支持该功能
         # 若指文件丢失，500 Internal Server Error 或 404 可能更合适，这里保留原逻辑
-        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_501_NOT_IMPLEMENTED, detail="Comic archive missing")
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_501_NOT_IMPLEMENTED,
+                                    detail="Document archive missing")
     # 处理文件操作
     pic_list = get_zip_namelist(document_path)
     if isinstance(pic_list, str):
@@ -257,8 +291,8 @@ def show_comic(
          response_class=fastapi.responses.FileResponse,
          responses={
              fastapi.status.HTTP_304_NOT_MODIFIED: {
-                "description": "资源未修改，使用本地缓存",
-                "content": {}
+                 "description": "资源未修改，使用本地缓存",
+                 "content": {}
              }
          },
          dependencies=[fastapi.Depends(RequireCookies())])
@@ -275,7 +309,8 @@ def get_document_content(request: fastapi.Request,
         raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND)
     file_path = archived_document_path / document.file_path
     if not file_path.exists():
-        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND, detail='请先访问show页面提交下载任务')
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND,
+                                    detail='请先访问show页面提交下载任务')
     return create_content_response(request, document, content_index)
 
 
