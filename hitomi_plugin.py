@@ -42,24 +42,22 @@ async def implement_document(comic: hitomiv2.Comic, tags: list[document_sql.Tag]
             comic_authors_list.append(author.artist)
     raw_comic_path = log_comic.RAW_PATH / Path(f'{comic.id}.zip')
 
-    # if raw_comic_path.exists():
-    #     task_status[comic.title] = TaskStatus(percent=0, message='预下载文件已存在, 请求人工接管')
-    #     return
-    # task_status[comic.title] = TaskStatus(percent=0)
-    # total_files_num = len(comic.files)
-    # done_nums = 0
-    #
-    # # noinspection PyUnusedLocal
-    # async def phase_callback(url: str):
-    #     nonlocal done_nums
-    #     done_nums += 1
-    #     task_status[comic.title].percent = round(done_nums / total_files_num * 100, ndigits=2)
-    # with open(raw_comic_path, 'wb') as cf:
-    #     dl_result = await hitomiv2.download_comic(comic, cf, max_threads=5, phase_callback=phase_callback)
-    # if not dl_result:
-    #     task_status[comic.title].message = '下载失败'
+    if raw_comic_path.exists():
+        task_status[comic.title] = TaskStatus(percent=0, message='预下载文件已存在, 请求人工接管')
+        return
+    task_status[comic.title] = TaskStatus(percent=0)
+    total_files_num = len(comic.files)
+    done_nums = 0
 
-    task_status[comic.title] = TaskStatus(percent=100)
+    # noinspection PyUnusedLocal
+    async def phase_callback(url: str):
+        nonlocal done_nums
+        done_nums += 1
+        task_status[comic.title].percent = round(done_nums / total_files_num * 100, ndigits=2)
+    with open(raw_comic_path, 'wb') as cf:
+        dl_result = await hitomiv2.download_comic(comic, cf, max_threads=5, phase_callback=phase_callback)
+    if not dl_result:
+        task_status[comic.title].message = '下载失败'
 
     comic_hash = await log_comic.get_file_hash(raw_comic_path)
     hash_name = f'{comic_hash}.zip'
