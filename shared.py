@@ -9,19 +9,9 @@ PASSWORD_FILE = Path('password')
 if not PASSWORD_FILE.exists():
     raise ValueError('Password file not found')
 with open(PASSWORD_FILE) as pwd_f:
-    DEFAULT_AUTH_TOKEN = pwd_f.read()
+    DEFAULT_AUTH_TOKEN = pwd_f.read().strip()
 REQUIRED_AUTH_COOKIE = {"password": DEFAULT_AUTH_TOKEN}
 REDIRECT_TARGET = "login_page"
-PAGE_COUNT = 10
-
-
-class TaskStatus(BaseModel):
-    percent: int | float = 0
-    message: Optional[str] = None
-
-
-# 这里的 task_status 是全局共享的状态
-task_status: dict[str, TaskStatus] = {}
 
 
 # --- 3. 依赖注入函数 ---
@@ -42,6 +32,18 @@ class RequireCookies:
             if actual_value is None or actual_value != expected_value:
                 raise fastapi.HTTPException(status_code=fastapi.status.HTTP_403_FORBIDDEN, detail=None)
         return True
+
+
+PAGE_COUNT = 10
+
+
+class TaskStatus(BaseModel):
+    percent: int | float = 0
+    message: Optional[str] = None
+
+
+# 这里的 task_status 是全局共享的状态
+task_status: dict[str, TaskStatus] = {}
 
 
 def get_db():
