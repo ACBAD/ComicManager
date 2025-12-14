@@ -234,7 +234,7 @@
         // 2. 获取数据
         try {
             const response = await fetch(`${API_GET_TAGS}?source_id=${globalSourceId}&source_document_id=${globalSourceDocId}`);
-            if (!response.ok) throw new Error(`API Error: ${response.status}`);
+            if (!response.ok) throw new Error(`API Error: ${response.status} 详情 ${await response.text()}`);
 
             const result = await response.json();
             const tags = Array.isArray(result) ? result : (result.tags || []);
