@@ -14,7 +14,7 @@ from fastapi.templating import Jinja2Templates
 from pathlib import Path
 from pydantic import BaseModel
 from email.utils import formatdate
-from shared import RequireCookies, DEFAULT_AUTH_TOKEN, get_db, PAGE_COUNT, task_status, TaskStatus
+from shared import RequireCookies, DEFAULT_AUTH_TOKEN, get_db, PAGE_COUNT, task_status
 import asyncio
 
 hitomi_router = None
@@ -32,6 +32,7 @@ except ImportError as e:
 app_kwargs = {"docs_url": None, "redoc_url": None, "openapi_url": None}
 
 
+# noinspection PyUnusedLocal
 @asynccontextmanager
 async def lifespan(app_instance: fastapi.FastAPI):
     # 如果插件存在，启动插件的后台任务
@@ -279,8 +280,9 @@ def show_document(
     # 生成图片链接列表
     images = [f'/document_content/{document_id}/{i}' for i in range(len(pic_list))]
 
-    # 渲染模板
-    # FastAPI 的 Jinja2Templates 必须接收 request 对象
+    possible_task = task_status.get(document_info.title, None)
+    if possible_task:
+        task_status.pop(document_info.title, None)
     return templates.TemplateResponse(
         name="gallery-v2.html",
         context={"request": request, "images": images}
