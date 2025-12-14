@@ -145,7 +145,7 @@ async def add_document_gateway(source_document_id: str, source_id: int):
     return fastapi.responses.RedirectResponse(url=f'/comic/add?source_id={source_id}&source_document_id={source_document_id}')
 
 
-@app.get('/get_document',
+@app.get('/get_document/{source_document_id}',
          status_code=fastapi.status.HTTP_307_TEMPORARY_REDIRECT,
          dependencies=[fastapi.Depends(RequireCookies())])
 async def get_document(source_document_id: str, db: document_db.DocumentDB = fastapi.Depends(get_db)):
