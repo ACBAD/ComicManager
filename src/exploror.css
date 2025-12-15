@@ -1,0 +1,321 @@
+/* =========================================
+   全局变量与基础设置
+   ========================================= */
+:root {
+    --primary-color: #2563eb;       /* 科技蓝 - 主色调 */
+    --primary-hover: #1d4ed8;       /* 深蓝 - 悬停 */
+    --bg-color: #f3f4f6;            /* 浅灰 - 页面背景 */
+    --card-bg: #ffffff;             /*由于白色 - 卡片背景 */
+    --text-main: #1f2937;           /* 深灰 - 主要文字 */
+    --text-sub: #6b7280;            /* 灰 - 次要文字 */
+    --border-color: #e5e7eb;        /* 边框颜色 */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --tag-bg: #fee2e2;              /* 保持了原有的粉色系Tag底色，但更柔和 */
+    --tag-text: #991b1b;            /* Tag文字颜色 */
+    --radius: 8px;                  /* 统一圆角 */
+}
+
+* {
+    box-sizing: border-box; /* 关键：防止padding撑大元素 */
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    margin: 0;
+    padding: 20px;
+    line-height: 1.5;
+}
+
+h1 {
+    text-align: center;
+    font-size: 2rem;
+    color: var(--text-main);
+    font-weight: 700;
+    margin-bottom: 30px;
+    letter-spacing: -0.025em;
+}
+
+/* =========================================
+   搜索与导航区域 (.nav-container)
+   ========================================= */
+.nav-container {
+    background: var(--card-bg);
+    padding: 24px;
+    margin: 0 auto 30px auto;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    max-width: 800px;
+    border: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* 输入框与Select通用样式 */
+.input-item {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--text-main);
+    background-color: #fff;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    outline: none;
+    appearance: none; /* 移除浏览器默认样式 */
+}
+
+/* 交互状态：Focus */
+.input-item:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+/* 特殊处理：提交按钮 */
+button.input-item#submit-button {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 8px;
+    height: 44px; /* 增加点击区域 */
+}
+
+button.input-item#submit-button:hover {
+    background-color: var(--primary-hover);
+}
+
+button.input-item#submit-button:active {
+    transform: scale(0.98); /* 点击时的按压效果 */
+}
+
+/* 布局辅助 */
+.tags-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+#category-select {
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.5rem center;
+    background-repeat: no-repeat;
+    background-size: 1.5em 1.5em;
+    padding-right: 2.5rem;
+}
+
+/* 下拉联想列表 */
+.dropdown-container {
+    position: relative;
+    width: 100%;
+}
+
+.dropdown-list {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    max-height: 200px;
+    overflow-y: auto;
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: var(--shadow-md);
+    z-index: 50;
+    list-style: none;
+    padding: 4px 0;
+    margin-top: 4px;
+    display: none; /* JS控制显示 */
+}
+
+.dropdown-list li {
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.1s;
+}
+
+.dropdown-list li:hover {
+    background-color: #f3f4f6;
+    color: var(--primary-color);
+}
+
+/* =========================================
+   文档列表区域 (.list-class)
+   ========================================= */
+.list-class {
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.list-item {
+    display: flex;
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 16px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    align-items: start;
+}
+
+.list-item:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-hover);
+    border-color: #d1d5db;
+}
+
+.thumbnail {
+    width: 120px;
+    height: 170px; /* 固定比例，防止拉伸难看 */
+    object-fit: cover;
+    border-radius: 4px;
+    background-color: #e5e7eb;
+    border: 1px solid #eee;
+    flex-shrink: 0; /* 防止被挤压 */
+}
+
+.details {
+    margin-left: 20px;
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* 标题样式 */
+.details h3 {
+    margin: 0;
+    font-size: 1.125rem;
+    line-height: 1.4;
+}
+
+.details h3 a {
+    color: var(--text-main);
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.details h3 a:hover {
+    color: var(--primary-color);
+}
+
+/* 作者按钮样式 */
+.details button {
+    background: none;
+    border: 1px solid transparent;
+    padding: 0;
+    font-size: 14px;
+    color: var(--text-sub);
+    cursor: pointer;
+    text-align: left;
+    width: fit-content;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    transition: all 0.2s;
+}
+
+.details button:hover {
+    color: var(--primary-color);
+    text-decoration-color: var(--primary-color);
+}
+
+/* Tag 容器与样式 */
+.tag-info {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.tag-info span {
+    display: inline-block;
+    background-color: var(--tag-bg);
+    color: var(--tag-text);
+    padding: 4px 10px;
+    border-radius: 9999px; /* 胶囊形状 */
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid rgba(0,0,0,0.05);
+    transition: background 0.2s;
+}
+
+.tag-info span:hover {
+    background-color: #fecaca; /* 略微加深 */
+}
+
+/* =========================================
+   分页控制栏 (.title-bar-class)
+   ========================================= */
+.title-bar-class {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    margin: 30px auto;
+    padding: 10px;
+    flex-wrap: wrap;
+}
+
+/* 分页按钮通用 */
+.title-item {
+    height: 36px;
+    padding: 0 16px;
+    border: 1px solid #d1d5db;
+    background-color: white;
+    border-radius: 6px;
+    color: var(--text-main);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 按钮交互 */
+.title-item:hover {
+    background-color: #f9fafb;
+    border-color: #9ca3af;
+}
+
+.title-item:active {
+    background-color: #f3f4f6;
+    transform: scale(0.95); /* 按钮按压反馈 */
+}
+
+/* 输入页码步长的框 */
+input.title-item {
+    width: 140px;
+    text-align: center;
+    cursor: text;
+}
+input.title-item:focus {
+    border-color: var(--primary-color);
+    outline: none;
+}
+
+/* 页码文字 */
+.title-bar-class h2,
+.title-bar-class h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: normal;
+    color: var(--text-sub);
+}
+
+#now-page, #total-page,
+#now-page-bottom, #total-page-bottom {
+    font-weight: 700;
+    color: var(--text-main);
+    font-family: monospace; /* 数字使用等宽字体对齐 */
+    font-size: 18px;
+}
