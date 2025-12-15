@@ -10,7 +10,6 @@ from site_utils import archived_document_path, get_zip_namelist, get_zip_image, 
 from contextlib import asynccontextmanager
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
-from fastapi.templating import Jinja2Templates
 from pathlib import Path
 from pydantic import BaseModel
 from email.utils import formatdate
@@ -18,7 +17,6 @@ from shared import RequireCookies, DEFAULT_AUTH_TOKEN, get_db, PAGE_COUNT, task_
 import asyncio
 
 hitomi_router = None
-templates = Jinja2Templates(directory="templates")
 
 try:
     import hitomi_plugin
@@ -244,54 +242,24 @@ def create_content_response(request: fastapi.Request, document: Document,
 def get_document_namelist(document_id: int,
                           db: document_db.DocumentDB = fastapi.Depends(get_db)) -> list[str]:
     if document_id < 0:
-        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_400_BAD_REQUEST)
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_400_BAD_REQUEST, detail='自己输了啥心里有数')
     document = db.get_document_by_id(document_id)
     if document is None:
-        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND)
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND, detail='数据库中不存在此文件')
     file_path = archived_document_path / document.file_path
     if not file_path.exists():
-        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND,
-                                    detail='请先访问show页面提交下载任务')
-    namelist = get_zip_namelist(file_path)
-    if isinstance(namelist, str):
-        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND, detail=namelist)
-    return namelist
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND, detail='数据库有, 本地不存在')
+    pic_list = get_zip_namelist(file_path)
+    if isinstance(pic_list, str):
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND, detail=pic_list)
+    return [f'/document_content/{document_id}/{i}' for i in range(len(pic_list))]
 
 
 @app.get('/show_document/{document_id}',
          response_class=fastapi.responses.HTMLResponse,
          dependencies=[fastapi.Depends(RequireCookies())])
-def show_document(
-        request: fastapi.Request,
-        document_id: int,
-        db: document_db.DocumentDB = fastapi.Depends(get_db)
-):
-    # 业务逻辑：获取漫画信息
-    document_info = db.get_document_by_id(document_id)
-    if not document_info:
-        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND, detail="Document not found")
-    # 构建路径
-    # 假设 document_info[2] 是文件名，建议后续用 Pydantic Model 替换 Tuple 索引访问
-    document_path = archived_document_path / document_info.file_path
-    if not document_path.exists():
-        # 501 Not Implemented 语义上通常指服务器不支持该功能
-        # 若指文件丢失，500 Internal Server Error 或 404 可能更合适，这里保留原逻辑
-        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_501_NOT_IMPLEMENTED,
-                                    detail="Document archive missing")
-    # 处理文件操作
-    pic_list = get_zip_namelist(document_path)
-    if isinstance(pic_list, str):
-        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND, detail='无法获取内容列表')
-    # 生成图片链接列表
-    images = [f'/document_content/{document_id}/{i}' for i in range(len(pic_list))]
-
-    possible_task = task_status.get(document_info.title, None)
-    if possible_task:
-        task_status.pop(document_info.title, None)
-    return templates.TemplateResponse(
-        name="gallery-v2.html",
-        context={"request": request, "images": images}
-    )
+def show_document():
+    return fastapi.responses.FileResponse('templates/gallery.html')
 
 
 @app.get('/document_content/{document_id}/{content_index}',
@@ -316,8 +284,7 @@ def get_document_content(request: fastapi.Request,
         raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND)
     file_path = archived_document_path / document.file_path
     if not file_path.exists():
-        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND,
-                                    detail='请先访问show页面提交下载任务')
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND)
     return create_content_response(request, document, content_index)
 
 
