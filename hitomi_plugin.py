@@ -68,10 +68,18 @@ async def implement_document(comic: hitomiv2.Comic, tags: list[document_sql.Tag]
         nonlocal done_nums
         done_nums += 1
         task_status[comic.title].percent = round(done_nums / total_files_num * 100, ndigits=2)
-    with open(raw_comic_path, 'wb') as cf:
-        dl_result = await hitomiv2.download_comic(comic, cf, max_threads=5, phase_callback=phase_callback)
-    if not dl_result:
+
+    try:
+        with open(raw_comic_path, 'wb') as cf:
+            dl_result = await hitomiv2.download_comic(comic, cf, max_threads=5, phase_callback=phase_callback)
+    except Exception as dl_e:
+        dl_result = dl_e
+    if dl_result is False:
         task_status[comic.title].message = '下载失败'
+        raw_comic_path.unlink(missing_ok=True)
+    elif isinstance(dl_result, str):
+        task_status[comic.title].message = f'下载失败, 异常: {dl_result}'
+        raw_comic_path.unlink(missing_ok=True)
 
     comic_hash = await log_comic.get_file_hash(raw_comic_path)
     hash_name = f'{comic_hash}.zip'
@@ -144,7 +152,7 @@ async def add_comic_post(request: AddComicRequest,
 
 class MissingTag(BaseModel):
     name: str
-    need_group: bool
+    group_id: Optional[int]
 
 
 @router.get('/get_missing_tags',
@@ -167,5 +175,5 @@ async def get_missing_tags(source_id: int,
     for tag in plain_tags:
         if tag.query_db(db):
             continue
-        tags.append(MissingTag(name=tag.hitomi_name, need_group=False if tag.group_id else True))
+        tags.append(MissingTag(name=tag.hitomi_name, group_id=tag.group_id))
     return tags

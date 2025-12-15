@@ -329,14 +329,16 @@ def get_tags(db: document_db.DocumentDB = fastapi.Depends(get_db), group_id: int
     return {t.name: t.tag_id for t in db_result}
 
 
-@app.get('/exploror', dependencies=[fastapi.Depends(RequireCookies())])
-def exploror(request: fastapi.Request, db: document_db.DocumentDB = fastapi.Depends(get_db)):
-    tag_groups = {tag_group.group_name: tag_group.tag_group_id for tag_group in db.get_tag_groups()}
-    return templates.TemplateResponse(
-        request=request,
-        name="exploror.html",
-        context={"tag_groups": tag_groups}
-    )
+@app.get('/get_tag_groups', dependencies=[fastapi.Depends(RequireCookies())])
+def get_tag_groups(db: document_db.DocumentDB = fastapi.Depends(get_db)):
+    return {tag_group.tag_group_id: tag_group.group_name for tag_group in db.get_tag_groups()}
+
+
+@app.get('/exploror',
+         response_class=fastapi.responses.HTMLResponse,
+         dependencies=[fastapi.Depends(RequireCookies())])
+def exploror():
+    return fastapi.responses.FileResponse(path='templates/exploror.html')
 
 
 @app.get('/', dependencies=[fastapi.Depends(RequireCookies())])

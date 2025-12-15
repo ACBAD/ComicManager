@@ -25,14 +25,11 @@
         <div class="tags-container">
             <!-- 不可输入的下拉列表，用于筛选 -->
             <select id="category-select" class="input-item" onchange="updateDropdownList()">
-                {% for group_name, group_id in tag_groups.items() %}
-                    <option value="{{ group_id }}">{{ group_name }}</option>
-                {% endfor %}
+
             </select>
             <div class="dropdown-container">
                 <!-- 可输入的下拉列表 -->
-                <input type="text" id="dropdown-input" class="input-item" placeholder="请等待tag列表更新"
-                       oninput="filterList()">
+                <input type="text" id="dropdown-input" class="input-item" placeholder="请等待tag列表更新" oninput="filterList()">
                 <ul id="dropdown-list" class="dropdown-list">
                 </ul>
             </div>
