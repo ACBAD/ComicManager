@@ -1,5 +1,4 @@
 from typing import Optional, List
-
 from sqlmodel import Field, SQLModel, Relationship, Index
 
 
@@ -14,10 +13,16 @@ class DocumentAuthorLink(SQLModel, table=True):
     __tablename__ = "document_authors"
 
     document_id: Optional[int] = Field(
-        default=None, foreign_key="documents.document_id", primary_key=True
+        default=None,
+        foreign_key="documents.document_id",
+        primary_key=True,
+        ondelete='CASCADE'
     )
     author_id: Optional[int] = Field(
-        default=None, foreign_key="authors.author_id", primary_key=True
+        default=None,
+        foreign_key="authors.author_id",
+        ondelete='CASCADE',
+        primary_key=True
     )
 
 
@@ -28,10 +33,16 @@ class DocumentTagLink(SQLModel, table=True):
     __tablename__ = "document_tags"
 
     document_id: Optional[int] = Field(
-        default=None, foreign_key="documents.document_id", primary_key=True
+        default=None,
+        foreign_key="documents.document_id",
+        ondelete='CASCADE',
+        primary_key=True
     )
     tag_id: Optional[int] = Field(
-        default=None, foreign_key="tags.tag_id", primary_key=True
+        default=None,
+        foreign_key="tags.tag_id",
+        ondelete='CASCADE',
+        primary_key=True
     )
 
 
@@ -44,10 +55,16 @@ class DocumentSourceLink(SQLModel, table=True):
     __tablename__ = "document_sources"
 
     document_id: Optional[int] = Field(
-        default=None, foreign_key="documents.document_id", primary_key=True
+        default=None,
+        foreign_key="documents.document_id",
+        ondelete='CASCADE',
+        primary_key=True
     )
     source_id: Optional[int] = Field(
-        default=None, foreign_key="sources.source_id", primary_key=True
+        default=None,
+        foreign_key="sources.source_id",
+        ondelete='CASCADE',
+        primary_key=True
     )
     # 对应 DDL 中的 source_document_id 及其唯一索引
     source_document_id: str = Field(unique=True, index=True)
@@ -101,7 +118,9 @@ class Tag(SQLModel, table=True):
     hitomi_alter: Optional[str] = None
 
     # Foreign Key
-    group_id: Optional[int] = Field(default=None, foreign_key="tag_groups.tag_group_id")
+    group_id: Optional[int] = Field(default=None,
+                                    foreign_key="tag_groups.tag_group_id",
+                                    ondelete='CASCADE')
 
     # Relationship: Many-to-One
     group: Optional[TagGroup] = Relationship(back_populates="tags")

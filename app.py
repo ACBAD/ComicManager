@@ -166,6 +166,15 @@ async def get_status() -> dict[str, TaskStatus]:
     return task_status
 
 
+@app.delete('/delete_document', dependencies=[fastapi.Depends(RequireCookies())])
+def delete_document(document_id: int, auth_token: str, db: document_db.DocumentDB = fastapi.Depends(get_db)):
+    if auth_token != 'MisonoMika':
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_403_FORBIDDEN, detail='你只能看')
+    result = db.delete_document(document_id)
+    if result != 0:
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_400_BAD_REQUEST, detail='文档不存在')
+
+
 @app.post('/search_document', dependencies=[fastapi.Depends(RequireCookies())])
 def search_document(request: SearchDocumentRequest,
                     db: document_db.DocumentDB = fastapi.Depends(get_db)) -> SearchDocumentResponse:
@@ -252,6 +261,8 @@ def get_document_namelist(document_id: int,
     pic_list = get_zip_namelist(file_path)
     if isinstance(pic_list, str):
         raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND, detail=pic_list)
+    if document.title in task_status:
+        task_status.pop(document.title)
     return [f'/document_content/{document_id}/{i}' for i in range(len(pic_list))]
 
 
