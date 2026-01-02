@@ -180,7 +180,7 @@ function createDocument(document_info, tags_info, author_list) {
     document_details.className = 'details'
     let document_title = document.createElement('h3');
     let document_link = document.createElement('a');
-    document_link.href = '/get_document/' + document_info.document_id;
+    document_link.href = '/show_document/' + document_info.document_id;
     document_link.textContent = document_info.title;
     document_title.appendChild(document_link);
     document_details.appendChild(document_title);
