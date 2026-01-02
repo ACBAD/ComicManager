@@ -161,6 +161,45 @@ function updateSearchArgs(target_page) {
     return searchArgs;
 }
 
+
+/**
+ * 请求删除文档
+ * @param {number} document_id
+ */
+function requestDeleteDocument(document_id) {
+    // 1. 弹出输入框获取密码
+    const auth_token = prompt("请输入管理员口令以删除文档:");
+    // 如果用户点击取消或未输入，则终止
+    if (auth_token === null || auth_token.trim() === "") {
+        return;
+    }
+    // 2. 发送 AJAX DELETE 请求
+    $.ajax({
+        type: 'DELETE',
+        // 将参数拼接到 URL query string 中，确保 FastAPI 能正确读取
+        url: '/delete_document?document_id=' + document_id + '&auth_token=' + encodeURIComponent(auth_token),
+        success: function (response) {
+            alert('删除成功');
+            // 3. 刷新当前页面列表
+            const now_page = parseInt(document.getElementById('now-page').textContent, 10);
+            requestDocuments(now_page);
+        },
+        error: function (xhr) {
+            // 处理错误返回 (403 Forbidden 或 400 Bad Request)
+            let errorMsg = "删除失败";
+            if (xhr.responseJSON && xhr.responseJSON.detail) {
+                errorMsg += ": " + xhr.responseJSON.detail;
+            } else if (xhr.status === 403) {
+                errorMsg += ": 权限不足 (密码错误)";
+            } else {
+                errorMsg += ": 未知错误";
+            }
+            alert(errorMsg);
+        }
+    });
+}
+
+
 /**
  * 将标签绑定到指定的文档上
  * @param {DocumentInfo} document_info - 传入的文档信息对象
@@ -198,6 +237,16 @@ function createDocument(document_info, tags_info, author_list) {
         document_tags.appendChild(single_tag);
     })
     document_details.appendChild(document_tags);
+    let delete_btn = document.createElement('button');
+    delete_btn.textContent = '删除';
+    delete_btn.style.color = 'red'; // 简单样式，也可在css中定义class
+    delete_btn.style.marginLeft = '10px';
+    delete_btn.style.cursor = 'pointer';
+    // 绑定点击事件，调用删除逻辑
+    delete_btn.onclick = function() {
+        requestDeleteDocument(document_info.document_id);
+    };
+    document_details.appendChild(delete_btn);
     document_item.appendChild(document_details);
     documentsContainer.appendChild(document_item);
 }
