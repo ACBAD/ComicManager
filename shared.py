@@ -15,7 +15,7 @@ REDIRECT_TARGET = "login_page"
 
 
 # --- 3. 依赖注入函数 ---
-class RequireCookies:
+class Authoricator:
     def __init__(
             self,
             required_cookies: Optional[dict[str, str]] = None,

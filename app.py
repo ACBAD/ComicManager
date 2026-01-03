@@ -13,7 +13,7 @@ from fastapi.openapi.utils import get_openapi
 from pathlib import Path
 from pydantic import BaseModel
 from email.utils import formatdate
-from shared import RequireCookies, DEFAULT_AUTH_TOKEN, get_db, PAGE_COUNT, task_status, TaskStatus
+from shared import Authoricator, DEFAULT_AUTH_TOKEN, get_db, PAGE_COUNT, task_status, TaskStatus
 import asyncio
 
 hitomi_router = None
@@ -57,7 +57,7 @@ if hitomi_router:
 
 @app.get("/openapi.json",
          include_in_schema=False,
-         dependencies=[fastapi.Depends(RequireCookies())])
+         dependencies=[fastapi.Depends(Authoricator())])
 async def get_open_api_endpoint():
     return fastapi.responses.JSONResponse(get_openapi(title="DocumentManagerAPI", version="1.0.0", routes=app.routes))
 
@@ -65,7 +65,7 @@ async def get_open_api_endpoint():
 # 4. 手动实现 /docs，并加上依赖保护
 @app.get("/docs",
          include_in_schema=False,
-         dependencies=[fastapi.Depends(RequireCookies())])
+         dependencies=[fastapi.Depends(Authoricator())])
 async def get_documentation():
     return get_swagger_ui_html(openapi_url="/openapi.json", title="docs")
 
@@ -102,7 +102,7 @@ async def give_icon() -> fastapi.responses.FileResponse:
 
 @app.get('/src/{filename}',
          response_class=fastapi.responses.FileResponse,
-         dependencies=[fastapi.Depends(RequireCookies())])
+         dependencies=[fastapi.Depends(Authoricator())])
 async def give_src(filename: str) -> fastapi.responses.FileResponse:
     file_path = Path(f'src/{filename}')
     if not file_path.exists():
@@ -131,7 +131,7 @@ class SearchDocumentResponse(BaseModel):
              }
          },
          status_code=fastapi.status.HTTP_307_TEMPORARY_REDIRECT,
-         dependencies=[fastapi.Depends(RequireCookies())])
+         dependencies=[fastapi.Depends(Authoricator())])
 async def add_document_gateway(source_document_id: str, source_id: int):
     if hitomi_router is None:
         # 如果没加载插件，返回 501 Not Implemented
@@ -145,7 +145,7 @@ async def add_document_gateway(source_document_id: str, source_id: int):
 
 @app.get('/get_document/{source_document_id}',
          status_code=fastapi.status.HTTP_307_TEMPORARY_REDIRECT,
-         dependencies=[fastapi.Depends(RequireCookies())])
+         dependencies=[fastapi.Depends(Authoricator())])
 async def get_document(source_document_id: str, db: document_db.DocumentDB = fastapi.Depends(get_db)):
     db_result = db.search_by_source(source_document_id=source_document_id)
     if db_result:
@@ -155,18 +155,18 @@ async def get_document(source_document_id: str, db: document_db.DocumentDB = fas
 
 @app.get('/show_status',
          response_class=fastapi.responses.HTMLResponse,
-         dependencies=[fastapi.Depends(RequireCookies())])
+         dependencies=[fastapi.Depends(Authoricator())])
 async def get_download_status():
     return fastapi.responses.FileResponse('templates/show_download_status.html')
 
 
 @app.get('/download_status',
-         dependencies=[fastapi.Depends(RequireCookies())])
+         dependencies=[fastapi.Depends(Authoricator())])
 async def get_status() -> dict[str, TaskStatus]:
     return task_status
 
 
-@app.delete('/delete_document', dependencies=[fastapi.Depends(RequireCookies())])
+@app.delete('/delete_document', dependencies=[fastapi.Depends(Authoricator())])
 def delete_document(document_id: int, auth_token: str, db: document_db.DocumentDB = fastapi.Depends(get_db)):
     if auth_token != 'MisonoMika':
         raise fastapi.HTTPException(status_code=fastapi.status.HTTP_403_FORBIDDEN, detail='你只能看')
@@ -175,7 +175,7 @@ def delete_document(document_id: int, auth_token: str, db: document_db.DocumentD
         raise fastapi.HTTPException(status_code=fastapi.status.HTTP_400_BAD_REQUEST, detail='文档不存在')
 
 
-@app.post('/search_document', dependencies=[fastapi.Depends(RequireCookies())])
+@app.post('/search_document', dependencies=[fastapi.Depends(Authoricator())])
 def search_document(request: SearchDocumentRequest,
                     db: document_db.DocumentDB = fastapi.Depends(get_db)) -> SearchDocumentResponse:
     if request.target_page is None:
@@ -247,7 +247,7 @@ def create_content_response(request: fastapi.Request, document: Document,
     )
 
 
-@app.get('/document_content/{document_id}', dependencies=[fastapi.Depends(RequireCookies())])
+@app.get('/document_content/{document_id}', dependencies=[fastapi.Depends(Authoricator())])
 def get_document_namelist(document_id: int,
                           db: document_db.DocumentDB = fastapi.Depends(get_db)) -> list[str]:
     if document_id < 0:
@@ -268,7 +268,7 @@ def get_document_namelist(document_id: int,
 
 @app.get('/show_document/{document_id}',
          response_class=fastapi.responses.HTMLResponse,
-         dependencies=[fastapi.Depends(RequireCookies())])
+         dependencies=[fastapi.Depends(Authoricator())])
 def show_document():
     return fastapi.responses.FileResponse('templates/gallery.html')
 
@@ -281,7 +281,7 @@ def show_document():
                  "content": {}
              }
          },
-         dependencies=[fastapi.Depends(RequireCookies())])
+         dependencies=[fastapi.Depends(Authoricator())])
 def get_document_content(request: fastapi.Request,
                          document_id: int,
                          content_index: int,
@@ -299,7 +299,7 @@ def get_document_content(request: fastapi.Request,
     return create_content_response(request, document, content_index)
 
 
-@app.get('/get_tags/{group_id}', dependencies=[fastapi.Depends(RequireCookies())])
+@app.get('/get_tags/{group_id}', dependencies=[fastapi.Depends(Authoricator())])
 def get_tags(db: document_db.DocumentDB = fastapi.Depends(get_db), group_id: int = -1):
     if group_id < 0:
         raise fastapi.HTTPException(status_code=fastapi.status.HTTP_400_BAD_REQUEST)
@@ -307,18 +307,18 @@ def get_tags(db: document_db.DocumentDB = fastapi.Depends(get_db), group_id: int
     return {t.name: t.tag_id for t in db_result}
 
 
-@app.get('/get_tag_groups', dependencies=[fastapi.Depends(RequireCookies())])
+@app.get('/get_tag_groups', dependencies=[fastapi.Depends(Authoricator())])
 def get_tag_groups(db: document_db.DocumentDB = fastapi.Depends(get_db)):
     return {tag_group.tag_group_id: tag_group.group_name for tag_group in db.get_tag_groups()}
 
 
 @app.get('/exploror',
          response_class=fastapi.responses.HTMLResponse,
-         dependencies=[fastapi.Depends(RequireCookies())])
+         dependencies=[fastapi.Depends(Authoricator())])
 def exploror():
     return fastapi.responses.FileResponse(path='templates/exploror.html')
 
 
-@app.get('/', dependencies=[fastapi.Depends(RequireCookies())])
+@app.get('/', dependencies=[fastapi.Depends(Authoricator())])
 async def root():
     return fastapi.responses.RedirectResponse(url='/exploror', status_code=fastapi.status.HTTP_303_SEE_OTHER)

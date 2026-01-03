@@ -6,7 +6,7 @@ import document_sql
 import hitomiv2
 import log_comic
 from pathlib import Path
-from shared import RequireCookies, get_db, task_status, TaskStatus
+from shared import Authoricator, get_db, task_status, TaskStatus
 import document_db
 import shutil
 from pydantic import BaseModel
@@ -105,12 +105,12 @@ async def implement_document(comic: hitomiv2.Comic, tags: list[document_sql.Tag]
 # noinspection PyUnusedLocal
 @router.get('/add',
             response_class=HTMLResponse,
-            dependencies=[Depends(RequireCookies())])
+            dependencies=[Depends(Authoricator())])
 async def add_comic(source_id: int, source_document_id: str):
     return FileResponse('templates/add_comic.html')
 
 
-@router.post('/add', dependencies=[Depends(RequireCookies())])
+@router.post('/add', dependencies=[Depends(Authoricator())])
 async def add_comic_post(request: AddComicRequest,
                          bg_tasks: BackgroundTasks,
                          db: document_db.DocumentDB = Depends(get_db)) -> AddComicResponse:
@@ -156,7 +156,7 @@ class MissingTag(BaseModel):
 
 
 @router.get('/get_missing_tags',
-            dependencies=[Depends(RequireCookies())])
+            dependencies=[Depends(Authoricator())])
 async def get_missing_tags(source_id: int,
                            source_document_id: str,
                            db: document_db.DocumentDB = Depends(get_db)) -> list[MissingTag]:
