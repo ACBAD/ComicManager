@@ -15,16 +15,18 @@ from pydantic import BaseModel
 from email.utils import formatdate
 from shared import Authoricator, DEFAULT_AUTH_TOKEN, get_db, PAGE_COUNT, task_status, TaskStatus
 import asyncio
+from setup_logger import get_logger
 
+logger = get_logger('Site')
 hitomi_router = None
 
 try:
     import hitomi_plugin
 
     hitomi_router = hitomi_plugin.router
-    print("Hitomi 插件加载成功")
+    logger.info("Hitomi 插件加载成功")
 except ImportError as e:
-    print(f"Hitomi 插件未加载: {e}")
+    logger.info(f"Hitomi 插件未加载: {e}")
     hitomi_plugin = None
 
 app_kwargs = {"docs_url": None, "redoc_url": None, "openapi_url": None}
@@ -44,7 +46,7 @@ async def lifespan(app_instance: fastapi.FastAPI):
         try:
             await hitomi_bg_task
         except Exception as le:
-            print(str(le))
+            logger.error(str(le))
 
 
 # noinspection PyTypeChecker
