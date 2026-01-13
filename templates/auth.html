@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>身份验证设置</title>
+    <style>
+        :root {
+            --primary-color: #4a90e2;
+            --bg-color: #f5f7fa;
+            --card-bg: #ffffff;
+            --text-color: #333;
+            --border-radius: 12px;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: var(--text-color);
+        }
+
+        .container {
+            background: var(--card-bg);
+            padding: 2rem;
+            border-radius: var(--border-radius);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 400px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+
+        h1 {
+            margin-top: 0;
+            font-size: 1.5rem;
+            color: var(--text-color);
+        }
+
+        .status-box {
+            background-color: #f0f2f5;
+            padding: 10px;
+            border-radius: 8px;
+            margin: 1.5rem 0;
+            font-size: 0.9rem;
+            word-break: break-all;
+            text-align: left;
+            border: 1px solid #e1e4e8;
+        }
+
+        .status-label {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 5px;
+            color: #666;
+            font-size: 0.8rem;
+        }
+
+        .status-value {
+            color: var(--primary-color);
+            font-family: monospace;
+        }
+
+        .input-group {
+            margin-bottom: 1.5rem;
+            text-align: left;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 1rem;
+            box-sizing: border-box; /* 重要：防止padding撑破宽度 */
+            transition: border-color 0.2s;
+            outline: none;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--primary-color);
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            -webkit-tap-highlight-color: transparent; /* 移除移动端点击高亮 */
+        }
+
+        button:active {
+            opacity: 0.8;
+            transform: scale(0.98);
+        }
+
+        .footer {
+            margin-top: 20px;
+            font-size: 0.8rem;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🔑 身份验证</h1>
+
+    <div class="status-box">
+        <span class="status-label">当前 Cookie (auth_token):</span>
+        <span id="current-token" class="status-value">正在读取...</span>
+    </div>
+
+    <div class="input-group">
+        <label for="token-input">输入新的 Token</label>
+        <input type="text" id="token-input" placeholder="例如: admin_secret_123" autocapitalize="off" autocorrect="off">
+    </div>
+
+    <button onclick="saveToken()">保存并刷新</button>
+
+    <div class="footer">
+        Document Manager Auth System
+    </div>
+</div>
+
+<script>
+    // 配置项
+    const COOKIE_NAME = "auth_token";
+    const DEFAULT_VALUE = "fb425bd88e9c5512ebfbe87b8b2f10b89ec34e3e6b6c24e271c91d69583e36ac"; // 默认赋予的 Cookie 值
+    const COOKIE_DAYS = 36500; // Cookie 有效期
+
+    // 工具函数：设置 Cookie
+    function setCookie(name, value, days) {
+        let expires = "";
+        if (days) {
+            const date = new Date();
+            date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+            expires = "; expires=" + date.toUTCString();
+        }
+        // path=/ 确保在整个网站有效
+        document.cookie = name + "=" + (value || "") + expires + "; path=/; SameSite=Lax";
+    }
+
+    // 工具函数：获取 Cookie
+    function getCookie(name) {
+        const nameEQ = name + "=";
+        const ca = document.cookie.split(';');
+        for (let i = 0; i < ca.length; i++) {
+            let c = ca[i];
+            while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+            if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+        }
+        return null;
+    }
+
+    // 更新页面显示的当前状态
+    function updateDisplay() {
+        const val = getCookie(COOKIE_NAME);
+        const displayEl = document.getElementById('current-token');
+        const inputEl = document.getElementById('token-input');
+
+        if (val) {
+            displayEl.textContent = val;
+            // 可选：把当前值也填入输入框，方便修改
+            inputEl.value = val;
+        } else {
+            displayEl.textContent = "(未设置)";
+            displayEl.style.color = "#999";
+        }
+    }
+
+    // 保存按钮点击逻辑
+    function saveToken() {
+        const inputVal = document.getElementById('token-input').value.trim();
+        if (inputVal) {
+            setCookie(COOKIE_NAME, inputVal, COOKIE_DAYS);
+            alert("Token 已保存！即将刷新页面...");
+            location.reload();
+        } else {
+            alert("请输入有效的内容");
+        }
+    }
+
+    // 页面加载逻辑
+    window.onload = function() {
+        let currentVal = getCookie(COOKIE_NAME);
+
+        // 核心需求：只要访问就给一个默认值
+        // 策略：如果当前没有值，强制设为默认值
+        // 如果想"不管有没有设置都强制覆盖为默认值" (除非是用户点击保存)，解开下面注释
+        // setCookie(COOKIE_NAME, DEFAULT_VALUE, COOKIE_DAYS);
+
+        if (!currentVal) {
+            console.log("未检测到 Token，自动设置默认值...");
+            setCookie(COOKIE_NAME, DEFAULT_VALUE, COOKIE_DAYS);
+        }
+
+        updateDisplay();
+    };
+</script>
+
+</body>
+</html>

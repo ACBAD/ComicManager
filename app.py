@@ -5,7 +5,6 @@ from site_utils import (archived_document_path,
                         get_zip_namelist,
                         create_content_response,
                         Authoricator,
-                        auth_config,
                         PAGE_COUNT,
                         task_status,
                         TaskStatus)
@@ -96,12 +95,8 @@ async def admin(subpath: str = ""):
 
 @app.get('/HayaseYuuka',
          include_in_schema=False)
-async def get_auth(auth_token=None):
-    if auth_token is None:
-        resp = fastapi.responses.PlainTextResponse(status_code=fastapi.status.HTTP_200_OK,
-                                                   content=f'你现在已被认证为身份')
-        resp.set_cookie(key='identity', value=DEFAULT_AUTH_TOKEN, max_age=3600 * 24 * 365 * 10)
-        return resp
+async def get_auth():
+    return fastapi.responses.FileResponse(path='templates/auth.html')
 
 
 @app.get('/favicon.ico', include_in_schema=False)
