@@ -28,7 +28,7 @@ class AddComicResponse(BaseModel):
 
 
 # 初始化 Router
-router = APIRouter(tags=["Hitomi API"])
+router = APIRouter(tags=["Hitomi"])
 
 # 初始化核心对象
 hitomi = hitomiv2.Hitomi(proxy_settings=hitomiv2.HTTP_PROXY)
@@ -105,25 +105,24 @@ async def implement_document(comic: hitomiv2.Comic, tags: list[document_sql.Tag]
 
 
 document_router = APIRouter(tags=['Documents', 'API', 'Hitomi'])
-router.include_router(document_router, prefix='/api/documents/hitomi')
 tag_router = APIRouter(tags=['Tags', 'API', 'Hitomi'])
-router.include_router(tag_router, prefix='/api/tags/hitomi')
 
 
 # noinspection PyUnusedLocal
-@router.get('/add',
+@router.get('/hitomi/add',
             response_class=HTMLResponse,
             dependencies=[Depends(Authoricator())])
-async def add_comic_ui(source_id: int, source_document_id: str):
+async def add_comic_ui(source_document_id: str):
     return FileResponse('templates/add_hitomi_comic.html')
 
 
-@document_router.put('/add',
-                     name='hitomi.document.add')
-async def add_comic_put(request: AddComicRequest,
-                        bg_tasks: BackgroundTasks,
-                        user=Depends(Authoricator([UserAbilities.CREATE_DOCUMENT])),
-                        db: document_db.DocumentDB = Depends(get_db)) -> AddComicResponse:
+@document_router.post('/add',
+                      name='document.add.hitomi',
+                      dependencies=[Depends(Authoricator([UserAbilities.CREATE_DOCUMENT,
+                                                          UserAbilities.CREATE_TAG]))])
+async def add_comic_post(request: AddComicRequest,
+                         bg_tasks: BackgroundTasks,
+                         db: document_db.DocumentDB = Depends(get_db)) -> AddComicResponse:
     try:
         hitomi_result = await hitomi.get_comic(request.source_document_id)
     except Exception as e:
@@ -164,12 +163,10 @@ class MissingTag(BaseModel):
 
 
 @tag_router.get('/missing_tags',
-                dependencies=[Depends(Authoricator())])
-async def get_missing_tags(source_id: int,
-                           source_document_id: str,
+                dependencies=[Depends(Authoricator())],
+                name='tags.get.hitomi.missing_tags')
+async def get_missing_tags(source_document_id: str,
                            db: document_db.DocumentDB = Depends(get_db)) -> list[MissingTag]:
-    if source_id != 1:
-        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
     db_result = db.search_by_source(source_document_id=source_document_id)
     if db_result:
         return []
@@ -185,3 +182,7 @@ async def get_missing_tags(source_id: int,
             continue
         tags.append(MissingTag(name=tag.hitomi_name, group_id=tag.group_id))
     return tags
+
+
+router.include_router(tag_router, prefix='/api/tags/hitomi')
+router.include_router(document_router, prefix='/api/documents/hitomi')

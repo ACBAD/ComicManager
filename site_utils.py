@@ -26,6 +26,7 @@ class UserAbilities(enum.Enum):
     DELETE_DOCUMENT = 'document.delete'
     CREATE_TAG = 'tag.create'
     DELETE_TAG = 'tag.delete'
+    CREATE_SOURCE = 'source.create'
 
 
 class UserInfo(BaseModel):

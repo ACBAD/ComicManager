@@ -1,8 +1,7 @@
-const API_GET_TAGS = '/comic/get_missing_tags';
-const API_SUBMIT = '/comic/add';
-const API_GET_TAG_GROUPS = '/get_tag_groups'
+const API_GET_TAGS = '/api/tags/hitomi/missing_tags';
+const API_SUBMIT = '/api/documents/hitomi/add';
+const API_GET_TAG_GROUPS = '/api/tags'
 
-let globalSourceId = null;
 let globalSourceDocId = null;
 
 /**
@@ -32,7 +31,7 @@ function setErrorMessage(err){
  * @param {number} source_comic_id
  */
 async function getMissingTags(source_comic_id){
-    const response = await fetch(`${API_GET_TAGS}?source_id=1&source_document_id=${source_comic_id}`);
+    const response = await fetch(`${API_GET_TAGS}?source_document_id=${source_comic_id}`);
     if (!response.ok)throw new Error(`获取tag失败, 错误码: ${response.status} 详情 ${await response.text()}`);
     return await response.json();
 }
@@ -45,22 +44,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     tag_dict = await tag_group_resp.json();
     const params = new URLSearchParams(window.location.search);
-    const rawSourceId = params.get('source_id');
     const rawSourceDocId = params.get('source_document_id');
-    if (!rawSourceId){
-        setErrorMessage("缺少必需参数: source_id");
-        return;
-    }
     if (!rawSourceDocId){
         setErrorMessage("缺少必需参数: source_document_id");
         return;
     }
-    const parsedId = parseInt(rawSourceId, 10);
-    if (isNaN(parsedId)) {
-        setErrorMessage(`参数 source_id 必须是整数 (当前值: ${rawSourceId})`);
-        return;
-    }
-    globalSourceId = parsedId;
     globalSourceDocId = rawSourceDocId;
     let tags;
     try{
@@ -124,7 +112,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 document.getElementById('entryForm').addEventListener('submit', async function(e) {
     e.preventDefault();
 
-    if (globalSourceId === null || globalSourceDocId === null) {
+    if (globalSourceDocId === null) {
         setErrorMessage("提交失败：缺少必要的 Source ID 信息");
         return;
     }
@@ -151,7 +139,7 @@ document.getElementById('entryForm').addEventListener('submit', async function(e
     });
 
     const payload = {
-        source_id: globalSourceId,
+        source_id: 1,
         source_document_id: globalSourceDocId,
         inexistent_tags: tagsMap // 可能是空对象，符合 Pydantic 模型
     };
@@ -167,7 +155,12 @@ document.getElementById('entryForm').addEventListener('submit', async function(e
     if (postRes.ok && result.success) {
         window.location.href = result.redirect_url;
     } else {
-        setErrorMessage(result.message || '提交失败，服务器未返回原因');
+        if (result.message)
+            setErrorMessage(result.message);
+        else if (postRes.status === 403){
+            setErrorMessage('你无权添加本子')
+        }
+        else
+            setErrorMessage('添加失败, 服务器未返回原因')
     }
-
 });

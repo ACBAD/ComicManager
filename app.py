@@ -166,6 +166,18 @@ def search_document(tag_id: int | None = None,
     return SearchDocumentResponse(results=search_results, total_count=total_count)
 
 
+@document_router.post('/',
+                      name='document.add')
+def add_document(payload: dict = fastapi.Body()):
+    source_id = payload.get('source_id', None)
+    if source_id is None:
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_400_BAD_REQUEST)
+    if source_id == 1:
+        return fastapi.responses.RedirectResponse(url='/api/documents/hitomi/add',
+                                                  status_code=fastapi.status.HTTP_307_TEMPORARY_REDIRECT)
+    raise fastapi.HTTPException(status_code=fastapi.status.HTTP_501_NOT_IMPLEMENTED)
+
+
 @document_router.get('/{document_id}',
                      dependencies=[fastapi.Depends(Authoricator())],
                      name='document.get_metadata')
@@ -292,7 +304,7 @@ async def root():
 
 
 if hitomi_router:
-    app.include_router(hitomi_router, prefix="/hitomi")
+    app.include_router(hitomi_router)
 app.include_router(document_router, prefix='/api/documents')
 app.include_router(tag_router, prefix='/api/tags')
 app.include_router(site_router, prefix='/api/site')
