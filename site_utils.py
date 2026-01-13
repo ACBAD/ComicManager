@@ -1,13 +1,107 @@
+import enum
 import hashlib
 import os
+from email.utils import formatdate
+
+import pydantic
+from pydantic import BaseModel
 from typing import Optional
 import natsort
 import zipfile
 import io
 from pathlib import Path
+from setup_logger import get_logger
+import document_sql
+import fastapi
 import aiofiles
+import json
+
 archived_document_path = Path('archived_documents')
 thumbnail_folder = Path('thumbnail')
+logger = get_logger('SiteUtils')
+
+
+class UserAbilities(enum.Enum):
+    CREATE_DOCUMENT = 'document.create'
+    DELETE_DOCUMENT = 'document.delete'
+    CREATE_TAG = 'tag.create'
+    DELETE_TAG = 'tag.delete'
+
+
+class UserInfo(BaseModel):
+    username: str
+    abilities: list[UserAbilities]
+    admin: bool = False
+
+    @property
+    def is_admin(self):
+        return self.admin
+
+    def has_ability(self, ability: UserAbilities):
+        return ability in self.abilities
+
+
+class UserConfig(BaseModel):
+    users: dict[str, UserInfo]
+
+
+auth_file_path = Path('auth.json')
+auth_config: UserConfig | None = None
+if auth_file_path.exists():
+    with open(auth_file_path) as pwd_f:
+        auth_file_content = pwd_f.read()
+        try:
+            auth_config = UserConfig.model_validate(json.loads(auth_file_content))
+        except (pydantic.ValidationError, json.JSONDecodeError) as ve:
+            logger.warning(f'认证文件不合规, 将忽略: {ve}')
+else:
+    logger.warning('认证文件未配置, 默认允许所有人进行任何操作')
+
+
+async def get_current_user(request: fastapi.Request) -> UserInfo | None:
+    token = request.cookies.get("auth_token")
+    if auth_config is None:
+        return UserInfo(username='__DEFAULT_ADMIN__', admin=True, abilities=[])
+    if not token:
+        return None
+    user = auth_config.users.get(token, None)
+    if not user:
+        return None
+    return user
+
+
+class Authoricator:
+    def __init__(
+            self,
+            required_abilities: list[UserAbilities] | None = None,
+    ):
+        self.required_abilities = required_abilities
+
+    async def __call__(self, user: UserInfo = fastapi.Depends(get_current_user)) -> UserInfo | None:
+        if user is None:
+            raise fastapi.HTTPException(status_code=fastapi.status.HTTP_401_UNAUTHORIZED, detail='需要登录, 或用户不存在')
+        if user.admin:
+            return user
+        if self.required_abilities is None:
+            return user
+        for ability in self.required_abilities:
+            if not user.has_ability(ability):
+                raise fastapi.HTTPException(status_code=fastapi.status.HTTP_403_FORBIDDEN,
+                                            detail=f'当前操作需要权限: {ability}, 用户 {user.username}无该权限')
+        return user
+
+
+PAGE_COUNT = 10
+
+
+class TaskStatus(BaseModel):
+    percent: int | float = 0
+    message: Optional[str] = None
+
+
+# 这里的 task_status 是全局共享的状态
+task_status: dict[str, TaskStatus] = {}
+
 
 if not os.path.exists(archived_document_path):
     os.makedirs(archived_document_path)
@@ -46,3 +140,52 @@ async def get_file_hash(file_path: Path, chunk_size: int = 65536) -> str:
         while chunk := await f.read(chunk_size):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
+
+
+def generate_thumbnail(document_id: int, file_path: Path):
+    pic_list = get_zip_namelist(file_path)
+    assert isinstance(pic_list, list)
+    if not pic_list:
+        return
+
+    thumbnail_content = get_zip_image(file_path, pic_list[0])
+    if not thumbnail_folder.exists():
+        thumbnail_folder.mkdir()
+
+    with open(thumbnail_folder / Path(f'{document_id}.webp'), "wb") as fu:
+        fu.write(thumbnail_content.read())
+
+
+def create_content_response(request: fastapi.Request, document: document_sql.Document,
+                            file_index: int) -> fastapi.responses.Response:
+    current_etag = hashlib.md5(f"{document.file_path}-{file_index}".encode()).hexdigest()
+    if request.headers.get("if-none-match") == current_etag:
+        return fastapi.Response(status_code=fastapi.status.HTTP_304_NOT_MODIFIED, headers={"ETag": current_etag})
+    # 构造通用 Header
+    # formatdate(usegmt=True) 生成标准的 RFC 1123 格式时间 (e.g., Wed, 21 Oct 2015 07:28:00 GMT)
+    # 这比手动 strftime 更严谨且兼容性更好
+    headers = {
+        "Cache-Control": "public, max-age=2678400",
+        "ETag": current_etag,
+        "Last-Modified": formatdate(usegmt=True)
+    }
+    # 6. 未命中缓存：返回完整数据
+    document_path = archived_document_path / document.file_path
+    if file_index == -1:
+        thumbnail_path = thumbnail_folder / Path(f'{document.document_id}.webp')
+        if not thumbnail_path.exists():
+            generate_thumbnail(document.document_id, document_path)
+        return fastapi.responses.FileResponse(path=thumbnail_path)
+    file_namelist = get_zip_namelist(document_path)
+    try:
+        file_name = file_namelist[file_index]
+    except IndexError:
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND, detail='索引超出范围')
+    content = get_zip_image(document_path, file_name)
+    if content is None:
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND, detail='无法获取文档内容')
+    return fastapi.responses.Response(
+        content=content.read(),
+        media_type=f"image/webp",
+        headers=headers
+    )

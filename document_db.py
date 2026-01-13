@@ -143,13 +143,21 @@ class DocumentDB:
         return self.session.exec(builder).all()
 
     def search_by_source(self, source_document_id: str,
-                         source_id: Optional[int] = None) -> Optional[document_sql.Document]:
+                         source_id: Optional[int] = None,
+                         allow_multi=False) -> document_sql.Document | list[document_sql.Document] | None:
         statement = sqlmodel.select(document_sql.DocumentSourceLink).where(
             document_sql.DocumentSourceLink.source_document_id == source_document_id
         )
         if source_id:
             statement = statement.where(document_sql.DocumentSourceLink.source_id == source_id)
-        return self.session.exec(statement).first()
+        search_result = self.session.exec(statement).all()
+        if len(search_result) > 1:
+            if allow_multi:
+                return [self.get_document_by_id(sr.document_id) for sr in search_result]
+            raise ReferenceError('source_document_id 关联了多个文档, 指定source_id以缩小范围')
+        if not search_result:
+            return None
+        return self.get_document_by_id(search_result[0].document_id)
 
     def search_by_file(self, filename: Union[str, Path]) -> Optional[document_sql.Document]:
         fname = filename.name if isinstance(filename, Path) else filename
