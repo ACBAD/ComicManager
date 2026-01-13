@@ -5,6 +5,8 @@ from site_utils import (archived_document_path,
                         get_zip_namelist,
                         create_content_response,
                         Authoricator,
+                        UserAbilities,
+                        get_db,
                         PAGE_COUNT,
                         task_status,
                         TaskStatus)
@@ -17,8 +19,9 @@ import asyncio
 from setup_logger import get_logger
 
 logger = get_logger('Site')
-document_router = fastapi.APIRouter(tags=['Documents API'])
-tag_router = fastapi.APIRouter(tags=['Tags API'])
+document_router = fastapi.APIRouter(tags=['Documents', 'API'])
+tag_router = fastapi.APIRouter(tags=['Tags', 'API'])
+site_router = fastapi.APIRouter(tags=['Site', 'API'])
 hitomi_router = None
 
 try:
@@ -31,11 +34,6 @@ except ImportError as e:
     hitomi_plugin = None
 
 app_kwargs = {"docs_url": None, "redoc_url": None, "openapi_url": None}
-
-
-def get_db():
-    with document_db.DocumentDB() as db:
-        yield db
 
 
 # noinspection PyUnusedLocal
@@ -60,9 +58,10 @@ app_kwargs["lifespan"] = lifespan
 
 app = fastapi.FastAPI(**app_kwargs)
 if hitomi_router:
-    document_router.include_router(hitomi_router, prefix="/hitomi")
+    app.include_router(hitomi_router, prefix="/hitomi")
 app.include_router(document_router, prefix='/api/documents')
 app.include_router(tag_router, prefix='/api/tags')
+app.include_router(site_router, prefix='/api/site')
 
 
 @app.get("/openapi.json",
@@ -122,19 +121,11 @@ async def get_download_status():
     return fastapi.responses.FileResponse('templates/show_download_status.html')
 
 
-@app.get('/download_status',
-         dependencies=[fastapi.Depends(Authoricator())])
+@site_router.get('/download_status',
+                 dependencies=[fastapi.Depends(Authoricator())],
+                 name='site.get_download_status')
 async def get_status() -> dict[str, TaskStatus]:
     return task_status
-
-
-@app.delete('/delete_document', dependencies=[fastapi.Depends(Authoricator())])
-def delete_document(document_id: int, auth_token: str, db: document_db.DocumentDB = fastapi.Depends(get_db)):
-    if auth_token != 'MisonoMika':
-        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_403_FORBIDDEN, detail='你只能看')
-    result = db.delete_document(document_id)
-    if result != 0:
-        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_400_BAD_REQUEST, detail='文档不存在')
 
 
 class DocumentMetadata(BaseModel):
@@ -206,15 +197,25 @@ def get_document_matadata(document_id: int,
     )
 
 
+@document_router.delete('/{document_id}', name='document.delete')
+def delete_document(document_id: int,
+                    user=fastapi.Depends(Authoricator([UserAbilities.DELETE_DOCUMENT])),
+                    db: document_db.DocumentDB = fastapi.Depends(get_db)):
+    result = db.delete_document(document_id)
+    if result != 0:
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_400_BAD_REQUEST, detail='文档不存在')
+    return fastapi.responses.Response(status_code=fastapi.status.HTTP_200_OK)
+
+
 @document_router.get('/{document_id}/page/{content_index}',
                      response_class=fastapi.responses.FileResponse,
                      responses={
-                             fastapi.status.HTTP_304_NOT_MODIFIED: {
-                                 "description": "资源未修改，使用本地缓存",
-                                 "content": {}
-                             },
-                             fastapi.status.HTTP_200_OK: {"description": "返回内容"}
+                         fastapi.status.HTTP_304_NOT_MODIFIED: {
+                             "description": "资源未修改，使用本地缓存",
+                             "content": {}
                          },
+                         fastapi.status.HTTP_200_OK: {"description": "返回内容"}
+                     },
                      dependencies=[fastapi.Depends(Authoricator())],
                      name='document.get_content')
 def get_document_content(request: fastapi.Request,
@@ -244,7 +245,8 @@ def get_tags(group_id: int | None, db: document_db.DocumentDB = fastapi.Depends(
         raise fastapi.HTTPException(status_code=fastapi.status.HTTP_400_BAD_REQUEST)
     db_result = db.get_tags_by_group(group_id)
     if not db_result:
-        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND, detail=f'不存在id为{group_id}的tag组')
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND,
+                                    detail=f'不存在id为{group_id}的tag组')
     return {t.name: t.tag_id for t in db_result}
 
 

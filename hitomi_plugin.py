@@ -6,7 +6,7 @@ import document_sql
 import hitomiv2
 import log_comic
 from pathlib import Path
-from shared import Authoricator, get_db, task_status, TaskStatus
+from site_utils import Authoricator, get_db, task_status, TaskStatus, UserAbilities
 import document_db
 import shutil
 from pydantic import BaseModel
@@ -14,7 +14,6 @@ from typing import Optional
 
 
 class AddComicRequest(BaseModel):
-    source_id: int
     source_document_id: str
     inexistent_tags: Optional[dict[str, tuple[Optional[int], str]]] = None
 
@@ -26,7 +25,7 @@ class AddComicResponse(BaseModel):
 
 
 # 初始化 Router
-router = APIRouter(tags=["Hitomi"])
+router = APIRouter(tags=["Hitomi API"])
 
 # 初始化核心对象
 hitomi = hitomiv2.Hitomi(proxy_settings=hitomiv2.HTTP_PROXY)
@@ -102,20 +101,26 @@ async def implement_document(comic: hitomiv2.Comic, tags: list[document_sql.Tag]
     shutil.move(raw_comic_path, final_path)
 
 
+document_router = APIRouter(tags=['Documents', 'API', 'Hitomi'])
+router.include_router(document_router, prefix='/api/documents/hitomi')
+tag_router = APIRouter(tags=['Tags', 'API', 'Hitomi'])
+router.include_router(tag_router, prefix='/api/tags/hitomi')
+
+
 # noinspection PyUnusedLocal
 @router.get('/add',
             response_class=HTMLResponse,
             dependencies=[Depends(Authoricator())])
-async def add_comic(source_id: int, source_document_id: str):
-    return FileResponse('templates/add_comic.html')
+async def add_comic_ui(source_id: int, source_document_id: str):
+    return FileResponse('templates/add_hitomi_comic.html')
 
 
-@router.post('/add', dependencies=[Depends(Authoricator())])
-async def add_comic_post(request: AddComicRequest,
-                         bg_tasks: BackgroundTasks,
-                         db: document_db.DocumentDB = Depends(get_db)) -> AddComicResponse:
-    if request.source_id != 1:
-        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@document_router.put('/add',
+                     name='hitomi.document.add')
+async def add_comic_put(request: AddComicRequest,
+                        bg_tasks: BackgroundTasks,
+                        user=Depends(Authoricator([UserAbilities.CREATE_DOCUMENT])),
+                        db: document_db.DocumentDB = Depends(get_db)) -> AddComicResponse:
     try:
         hitomi_result = await hitomi.get_comic(request.source_document_id)
     except Exception as e:
@@ -155,8 +160,8 @@ class MissingTag(BaseModel):
     group_id: Optional[int]
 
 
-@router.get('/get_missing_tags',
-            dependencies=[Depends(Authoricator())])
+@tag_router.get('/missing_tags',
+                dependencies=[Depends(Authoricator())])
 async def get_missing_tags(source_id: int,
                            source_document_id: str,
                            db: document_db.DocumentDB = Depends(get_db)) -> list[MissingTag]:

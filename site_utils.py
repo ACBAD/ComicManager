@@ -2,7 +2,7 @@ import enum
 import hashlib
 import os
 from email.utils import formatdate
-
+import document_db
 import pydantic
 from pydantic import BaseModel
 from typing import Optional
@@ -56,6 +56,11 @@ if auth_file_path.exists():
             logger.warning(f'认证文件不合规, 将忽略: {ve}')
 else:
     logger.warning('认证文件未配置, 默认允许所有人进行任何操作')
+
+
+def get_db():
+    with document_db.DocumentDB() as db:
+        yield db
 
 
 async def get_current_user(request: fastapi.Request) -> UserInfo | None:
