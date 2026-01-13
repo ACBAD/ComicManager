@@ -11,6 +11,9 @@ import document_db
 import shutil
 from pydantic import BaseModel
 from typing import Optional
+from setup_logger import get_logger
+
+logger = get_logger('HitomiPlugin')
 
 
 class AddComicRequest(BaseModel):
@@ -33,13 +36,13 @@ hitomi = hitomiv2.Hitomi(proxy_settings=hitomiv2.HTTP_PROXY)
 
 # --- 后台任务逻辑 ---
 async def refresh_hitomi_loop():
-    print("Hitomi 后台刷新任务已启动")
+    logger.info("Hitomi 后台刷新任务已启动")
     while True:
         try:
             try:
                 await hitomi.refresh_version()
             except Exception as e:
-                print(f"Hitomi 刷新失败，将在下个周期重试。错误: {e}")
+                logger.exception(f"Hitomi 刷新失败，将在下个周期重试。", exc_info=e)
             await asyncio.sleep(3600)
         except asyncio.CancelledError:
             break

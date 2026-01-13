@@ -18,7 +18,7 @@ from pydantic import BaseModel
 import asyncio
 from setup_logger import get_logger
 
-logger = get_logger('Site')
+logger = get_logger('Site', debug=True)
 document_router = fastapi.APIRouter(tags=['Documents', 'API'])
 tag_router = fastapi.APIRouter(tags=['Tags', 'API'])
 site_router = fastapi.APIRouter(tags=['Site', 'API'])
@@ -57,11 +57,6 @@ async def lifespan(app_instance: fastapi.FastAPI):
 app_kwargs["lifespan"] = lifespan
 
 app = fastapi.FastAPI(**app_kwargs)
-if hitomi_router:
-    app.include_router(hitomi_router, prefix="/hitomi")
-app.include_router(document_router, prefix='/api/documents')
-app.include_router(tag_router, prefix='/api/tags')
-app.include_router(site_router, prefix='/api/site')
 
 
 @app.get("/openapi.json",
@@ -129,7 +124,7 @@ async def get_status() -> dict[str, TaskStatus]:
 
 
 class DocumentMetadata(BaseModel):
-    document_meta: document_sql.Document
+    document_info: document_sql.Document
     document_authors: list[document_sql.Author]
     document_tags: list[document_sql.Tag]
     document_pages: list[str]
@@ -143,11 +138,11 @@ class SearchDocumentResponse(BaseModel):
 @document_router.get('/',
                      dependencies=[fastapi.Depends(Authoricator())],
                      name='document.search')
-def search_document(tag_id: int | None,
-                    page: int | None,
-                    author_name: str | None,
-                    source_document_id: str | None,
-                    source_id: int | None,
+def search_document(tag_id: int | None = None,
+                    page: int | None = None,
+                    author_name: str | None = None,
+                    source_document_id: str | None = None,
+                    source_id: int | None = None,
                     db: document_db.DocumentDB = fastapi.Depends(get_db)) -> SearchDocumentResponse:
     if page is None:
         target_page = 1
@@ -191,7 +186,7 @@ def get_document_matadata(document_id: int,
         task_status.pop(document.title)
     return DocumentMetadata(
         document_pages=[f'/api/documents/{document_id}/page/{i}' for i in range(len(pic_list))],
-        document_meta=document,
+        document_info=document,
         document_tags=document.tags,
         document_authors=document.authors
     )
@@ -235,14 +230,41 @@ def get_document_content(request: fastapi.Request,
     return create_content_response(request, document, content_index)
 
 
+@document_router.get('/{document_id}/thumbnail',
+                     response_class=fastapi.responses.FileResponse,
+                     responses={
+                         fastapi.status.HTTP_304_NOT_MODIFIED: {
+                             "description": "资源未修改，使用本地缓存",
+                             "content": {}
+                         },
+                         fastapi.status.HTTP_200_OK: {"description": "返回内容"}
+                     },
+                     dependencies=[fastapi.Depends(Authoricator())],
+                     name='document.get_content')
+def get_document_thmubnail(request: fastapi.Request,
+                           document_id: int,
+                           db: document_db.DocumentDB = fastapi.Depends(get_db)) -> fastapi.responses.Response:
+    if document_id < 0:
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_400_BAD_REQUEST)
+    document = db.get_document_by_id(document_id)
+    if document is None:
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND)
+    file_path = archived_document_path / document.file_path
+    if not file_path.exists():
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND)
+    return create_content_response(request, document, 0)
+
+
 @tag_router.get('/',
                 dependencies=[fastapi.Depends(Authoricator())],
                 name='tags.search')
-def get_tags(group_id: int | None, db: document_db.DocumentDB = fastapi.Depends(get_db)):
+def get_tags(group_id: int | None = None, db: document_db.DocumentDB = fastapi.Depends(get_db)):
+    logger.debug('收到tag查询')
     if group_id is None:
         return {tag_group.tag_group_id: tag_group.group_name for tag_group in db.get_tag_groups()}
     if group_id < 0:
         raise fastapi.HTTPException(status_code=fastapi.status.HTTP_400_BAD_REQUEST)
+    logger.debug(f'为请求{group_id}查询数据库')
     db_result = db.get_tags_by_group(group_id)
     if not db_result:
         raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND,
@@ -267,3 +289,10 @@ def exploror():
 @app.get('/', dependencies=[fastapi.Depends(Authoricator())])
 async def root():
     return fastapi.responses.RedirectResponse(url='/exploror', status_code=fastapi.status.HTTP_303_SEE_OTHER)
+
+
+if hitomi_router:
+    app.include_router(hitomi_router, prefix="/hitomi")
+app.include_router(document_router, prefix='/api/documents')
+app.include_router(tag_router, prefix='/api/tags')
+app.include_router(site_router, prefix='/api/site')

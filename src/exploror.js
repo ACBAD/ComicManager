@@ -3,7 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const dropdown_input = document.getElementById('dropdown-input');
     $.ajax({
         type: 'GET',
-        url: '/get_tag_groups',
+        url: '/api/tags',
         success: function (response) {
             for (const [group_id, group_name] of Object.entries(response)) {
                 let new_option = document.createElement('option');
@@ -42,7 +42,7 @@ function updateDropdownList() {
     dropdown_list.innerHTML = '';
     $.ajax({
         type: 'GET',
-        url: '/get_tags/' + group_selector.value,
+        url: '/api/tags?group_id=' + group_selector.value,
         success: function (response) {
             for (const [tag_name, tag_id] of Object.entries(response)) {
                 let new_option = document.createElement('li');
@@ -86,7 +86,7 @@ function submitAuthorSearch(event) {
     let author_input = document.getElementById('document-input');
     author_input.value = author_name;
     document.getElementById('dropdown-input').value = '';
-    requestDocuments(1);
+    searchDocuments(1);
 }
 
 let documentsContainer;
@@ -129,7 +129,7 @@ function switchPage(event) {
     } else {
         alert('不是翻页按钮，无法应用功能');
     }
-    requestDocuments(targetPage);
+    searchDocuments(targetPage);
 }
 
 
@@ -145,7 +145,7 @@ function switchPage(event) {
 
 function updateSearchArgs(target_page) {
     if (target_page === null)target_page = 1;
-    let searchArgs = {target_tag: 0, author_name: '', target_page: target_page};
+    let search_args = {target_tag: 0, author_name: '', target_page: target_page};
     const tag_name = document.getElementById('dropdown-input').value;
     const tag_select_list = document.getElementById('dropdown-list');
     let tag_id = 0;
@@ -156,9 +156,9 @@ function updateSearchArgs(target_page) {
             console.log('已查询到指定tag: ' + tag_id)
         }
     }
-    searchArgs.author_name = document.getElementById('document-input').value;
-    searchArgs.target_tag = tag_id;
-    return searchArgs;
+    search_args.author_name = document.getElementById('document-input').value;
+    search_args.target_tag = tag_id;
+    return search_args;
 }
 
 
@@ -167,22 +167,15 @@ function updateSearchArgs(target_page) {
  * @param {number} document_id
  */
 function requestDeleteDocument(document_id) {
-    // 1. 弹出输入框获取密码
-    const auth_token = prompt("请输入管理员口令以删除文档:");
-    // 如果用户点击取消或未输入，则终止
-    if (auth_token === null || auth_token.trim() === "") {
-        return;
-    }
-    // 2. 发送 AJAX DELETE 请求
     $.ajax({
         type: 'DELETE',
         // 将参数拼接到 URL query string 中，确保 FastAPI 能正确读取
-        url: '/delete_document?document_id=' + document_id + '&auth_token=' + encodeURIComponent(auth_token),
+        url: '/' + document_id,
         success: function (response) {
             alert('删除成功');
             // 3. 刷新当前页面列表
             const now_page = parseInt(document.getElementById('now-page').textContent, 10);
-            requestDocuments(now_page);
+            searchDocuments(now_page);
         },
         error: function (xhr) {
             // 处理错误返回 (403 Forbidden 或 400 Bad Request)
@@ -190,65 +183,13 @@ function requestDeleteDocument(document_id) {
             if (xhr.responseJSON && xhr.responseJSON.detail) {
                 errorMsg += ": " + xhr.responseJSON.detail;
             } else if (xhr.status === 403) {
-                errorMsg += ": 权限不足 (密码错误)";
+                errorMsg += ": 权限不足";
             } else {
                 errorMsg += ": 未知错误";
             }
             alert(errorMsg);
         }
     });
-}
-
-
-/**
- * 将标签绑定到指定的文档上
- * @param {DocumentInfo} document_info - 传入的文档信息对象
- * @param {Array<TagInfo>} tags_info - 传入的标签信息对象
- * @param {Array<string>} author_list - 传入的作者信息对象
- * @returns {void}
- */
-function createDocument(document_info, tags_info, author_list) {
-    console.log(document_info, tags_info, author_list);
-    let document_item = document.createElement('div');
-    document_item.className = 'list-item';
-    let document_thumbnail = document.createElement('img');
-    document_thumbnail.className = 'thumbnail';
-    document_thumbnail.src = '/document_content/' + document_info.document_id + '/-1';
-    document_item.appendChild(document_thumbnail);
-    let document_details = document.createElement('div');
-    document_details.className = 'details'
-    let document_title = document.createElement('h3');
-    let document_link = document.createElement('a');
-    document_link.href = '/show_document/' + document_info.document_id;
-    document_link.textContent = document_info.title;
-    document_title.appendChild(document_link);
-    document_details.appendChild(document_title);
-    author_list.forEach(author_name => {
-        let document_author = document.createElement('button');
-        document_author.addEventListener("click", submitAuthorSearch);
-        document_author.textContent = author_name;
-        document_details.appendChild(document_author);
-    })
-    let document_tags = document.createElement('div');
-    document_tags.className = 'tag-info';
-    tags_info.forEach(tag => {
-        let single_tag = document.createElement('span');
-        single_tag.textContent = tag.name;
-        document_tags.appendChild(single_tag);
-    })
-    document_details.appendChild(document_tags);
-    let delete_btn = document.createElement('button');
-    delete_btn.textContent = '删除';
-    delete_btn.style.color = 'red'; // 简单样式，也可在css中定义class
-    delete_btn.style.marginLeft = '10px';
-    delete_btn.style.cursor = 'pointer';
-    // 绑定点击事件，调用删除逻辑
-    delete_btn.onclick = function() {
-        requestDeleteDocument(document_info.document_id);
-    };
-    document_details.appendChild(delete_btn);
-    document_item.appendChild(document_details);
-    documentsContainer.appendChild(document_item);
 }
 
 /**
@@ -269,50 +210,166 @@ function createDocument(document_info, tags_info, author_list) {
  */
 
 /**
- * @typedef {Object} SearchDocumentResponse
- * @property {number} total_count
- * @property {{[doc_id: number]: Array<string>}} document_authors
- * @property {{[doc_id: number]: DocumentInfo}} documents_info - 对应 dict[int, Document]
- * @property {{[doc_id: number]: Array<TagInfo>}} tags - 对应 dict[int, list[Tag]]，注意这里是数组
+ * @typedef {Object} AuthorInfo
+ * @property {number} author_id
+ * @property {string} name - 对应 name
  */
+
+/**
+ * @typedef {Object} DocumentMeta
+ * @property {DocumentInfo} document_info
+ * @property {Array<TagInfo>} document_tags
+ * @property {Array<AuthorInfo>} document_authors
+ * @property {Array<string>} document_pages
+ */
+
+
+/**
+ * 构造文档
+ * @param {DocumentMeta} document_meta
+ * @returns {HTMLDivElement}
+ */
+function constructDocument(document_meta) {
+    let document_id = document_meta.document_info.document_id;
+    console.log(`现在开始构造文档: ${document_id}`);
+    let document_item = document.createElement('div');
+    document_item.className = 'list-item';
+    let document_thumbnail = document.createElement('img');
+    document_thumbnail.className = 'thumbnail';
+    document_thumbnail.src = `/api/documents/${document_meta.document_info.document_id}/thumbnail`;
+    document_item.appendChild(document_thumbnail);
+    let document_details = document.createElement('div');
+    document_details.className = 'details'
+    let document_title = document.createElement('h3');
+    let document_link = document.createElement('a');
+    document_link.href = `/show_document/${document_id}`;
+    document_link.textContent = document_meta.document_info.title;
+    document_title.appendChild(document_link);
+    document_details.appendChild(document_title);
+    document_meta.document_authors.forEach(author_name => {
+        let document_author = document.createElement('button');
+        document_author.addEventListener("click", submitAuthorSearch);
+        document_author.textContent = author_name.name;
+        document_details.appendChild(document_author);
+    })
+    let document_tags = document.createElement('div');
+    document_tags.className = 'tag-info';
+    document_meta.document_tags.forEach(tag => {
+        let single_tag = document.createElement('span');
+        single_tag.textContent = tag.name;
+        document_tags.appendChild(single_tag);
+    })
+    document_details.appendChild(document_tags);
+    let delete_btn = document.createElement('button');
+    delete_btn.textContent = '删除';
+    delete_btn.style.color = 'red'; // 简单样式，也可在css中定义class
+    delete_btn.style.marginLeft = '10px';
+    delete_btn.style.cursor = 'pointer';
+    // 绑定点击事件，调用删除逻辑
+    delete_btn.onclick = function() {
+        requestDeleteDocument(document_id);
+    };
+    document_details.appendChild(delete_btn);
+
+    document_item.appendChild(document_details);
+    return document_item;
+}
+
+
+/**
+ * 定义 HTMX 事件的 detail 结构
+ * @typedef {Object} HtmxRequestDetail
+ * @property {HTMLElement} elt - 触发请求的元素 (The triggering element)
+ * @property {HTMLElement} target - 目标交换元素 (The target of the content swap)
+ * @property {XMLHttpRequest} xhr - 原生的 XHR 对象 (The XMLHttpRequest)
+ * @property {Object} requestConfig - 请求配置 (Request configuration)
+ * @property {string} path - 请求的路径
+ * @property {boolean} successful - 请求是否成功 (2xx)
+ * @property {boolean} failed - 请求是否失败
+ */
+
+/**
+ * 定义 HTMX 事件本身
+ * 这是一个 CustomEvent，但它的 detail 属性是我们上面定义的结构
+ * @typedef {CustomEvent & { detail: HtmxRequestDetail }} HtmxAfterRequestEvent
+ */
+
+// noinspection JSUnusedGlobalSymbols
+/**
+ * @param {HtmxAfterRequestEvent} evt
+ */
+function documentCallback(evt){
+        // 1. 获取上下文
+    const targetDiv = evt.detail.elt;
+    const xhr = evt.detail.xhr;
+    console.log(`触发documentCallback`)
+    // 2. 检查请求是否成功
+    if (evt.detail.successful) {
+        try {
+            // 3. 成功：调用构建函数
+            const responseData = JSON.parse(xhr.response);
+            const newElement = constructDocument(responseData);
+
+            // 4. 替换原对象 (原 div 会从 DOM 中移除，被新 div 取代)
+            if (targetDiv && targetDiv.parentNode) {
+                targetDiv.replaceWith(newElement);
+            }
+        } catch (err) {
+            console.error("构建 DOM 时出错:", err);
+            targetDiv.innerHTML = `<span style="color:red">数据处理异常</span>`;
+        }
+    } else {
+        // 5. 失败：在原 div 中显示报错信息
+        const errorMsg = xhr.statusText || "未知网络错误";
+        const errorCode = xhr.status;
+
+        targetDiv.innerHTML = `
+            <div style="color: red; border: 1px solid red; padding: 10px;">
+                <strong>加载失败</strong>
+                <p>错误代码: ${errorCode}</p>
+                <p>错误信息: ${errorMsg}</p>
+            </div>
+        `;
+    }
+}
+
+
+/**
+ * @param {{total_count: number, results: Array<number>}} response
+ */
+function unpackSearchResponse(response){
+    documentsContainer.innerHTML = '';
+    let document_count = response.total_count;
+    const total_page_item = document.getElementById('total-page');
+    total_page_item.textContent = Math.ceil(document_count / 10).toString();
+    console.log('开始构造文档列表')
+    response.results.forEach(document_id => {
+        let document_item = document.createElement('div');
+        document_item.setAttribute('hx-get', `/api/documents/${document_id}`);
+        document_item.setAttribute('hx-trigger', 'load')
+        document_item.setAttribute('hx-on::after-request', 'documentCallback(event)')
+        // document_item.setAttribute('hx-swap', 'none');
+        documentsContainer.appendChild(document_item);
+    });
+    htmx.process(documentsContainer);
+}
+
 
 /**
  *
  * @param {number} target_page
  */
-function requestDocuments(target_page) {
+function searchDocuments(target_page) {
     let search_args = updateSearchArgs(target_page);
-    let search_args_json = JSON.stringify(search_args);
-    console.log('查询参数: ' + search_args_json)
+    console.log('查询参数: ' + search_args)
+    let query_url_params = new URLSearchParams(Object.entries(search_args).map(([key, value]) => [key, String(value)])).toString();
     $.ajax({
-        type: 'POST',
-        url: '/search_document',
-        data: search_args_json,
+        type: 'GET',
+        url: `/api/documents/?${query_url_params}`,
         contentType: 'application/json;charset=UTF-8',
         success: function (response) {
             console.log('search_document 成功返回');
-            documentsContainer.innerHTML = '';
-            let document_count = response.total_count;
-            const total_page_item = document.getElementById('total-page');
-            total_page_item.textContent = Math.ceil(document_count / 10).toString();
-            console.log('开始构造文档列表')
-            let document_map = response.documents_info;
-            let tag_map = response.tags;
-            let author_map = response.document_authors;
-            // 2. 遍历文档字典
-            // 使用 Object.keys() 或 for...in 均可，这里推荐 Object.entries 以同时获取 ID 和 对象
-            Object.entries(document_map)
-                .sort((a, b) => parseInt(b[0]) - parseInt(a[0]))
-                .forEach(([key, doc_info]) => {
-                // 注意：Object 的键在 JS 运行时是字符串，如果需要数字类型可能需要 parseInt(key)
-                // 但作为索引访问对象属性时，字符串 key 是安全的
-                // 3. 通过 ID 在 tags 字典中查找对应的标签数组
-                // 添加 || [] 是防御性编程，防止某个文档没有对应的标签记录导致报错
-                let relevant_tags = tag_map[key] || [];
-                let relevent_authors = author_map[key] || [];
-                console.log('开始构造文档' + key)
-                createDocument(doc_info, relevant_tags, relevent_authors);
-            });
+            unpackSearchResponse(response);
         }
     })
     const now_page_item = document.getElementById('now-page');

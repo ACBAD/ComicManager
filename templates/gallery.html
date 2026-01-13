@@ -191,14 +191,15 @@
 
             try {
                 // 请求后端 API
-                const response = await fetch(`/document_content/${docId}`);
+                const response = await fetch(`/api/documents/${docId}`);
 
                 if (!response.ok) {
                     const errJson = await response.json();
                     throw new Error(errJson.detail || `Server Error: ${response.status}`);
                 }
 
-                images = await response.json(); // 预期返回 list[str]
+                let document_meta = await response.json();
+                images = document_meta.document_pages;
 
                 if (!Array.isArray(images) || images.length === 0) {
                     throw new Error("文档内容为空");
