@@ -18,7 +18,7 @@ from pydantic import BaseModel
 import asyncio
 from setup_logger import get_logger
 
-logger = get_logger('Site', debug=True)
+logger = get_logger('Site')
 document_router = fastapi.APIRouter(tags=['Documents', 'API'])
 tag_router = fastapi.APIRouter(tags=['Tags', 'API'])
 site_router = fastapi.APIRouter(tags=['Site', 'API'])
