@@ -115,21 +115,21 @@ function switchPage(event) {
     if (event.target.id === 'page-step') {
         return;
     }
-    const nowPage = parseInt(document.getElementById('now-page').textContent, 10);
-    const totalPage = parseInt(document.getElementById('total-page').textContent, 10);
-    const pageStep = parseInt(document.getElementById('page-step').value, 10) ?
+    const now_page = parseInt(document.getElementById('now-page').textContent, 10);
+    const total_page = parseInt(document.getElementById('total-page').textContent, 10);
+    const page_step = parseInt(document.getElementById('page-step').value, 10) ?
         parseInt(document.getElementById('page-step').value, 10) : 1;
-    let targetPage = 1;
+    let target_page = 1;
     if (event.target.id.startsWith('prev-page-button')) {
-        if (nowPage <= pageStep) return;
-        targetPage = nowPage - pageStep;
+        if (now_page <= page_step) return;
+        target_page = now_page - page_step;
     } else if (event.target.id.startsWith('next-page-button')) {
-        if (nowPage + pageStep > totalPage) return;
-        targetPage = nowPage + pageStep;
+        if (now_page + page_step > total_page) return;
+        target_page = now_page + page_step;
     } else {
         alert('不是翻页按钮，无法应用功能');
     }
-    searchDocuments(targetPage);
+    searchDocuments(target_page);
 }
 
 
@@ -375,6 +375,6 @@ function searchDocuments(target_page) {
         }
     })
     const now_page_item = document.getElementById('now-page');
-    now_page_item.textContent = search_args.target_page.toString();
+    now_page_item.textContent = search_args.page.toString();
 }
 
