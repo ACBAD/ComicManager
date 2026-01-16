@@ -1,7 +1,6 @@
 import asyncio
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
-from fastapi import status
 import document_sql
 import hitomiv2
 import log_comic

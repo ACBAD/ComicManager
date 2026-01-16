@@ -138,7 +138,7 @@ class SearchDocumentResponse(BaseModel):
 @document_router.get('/',
                      dependencies=[fastapi.Depends(Authoricator())],
                      name='document.search')
-def search_document(tag_id: int | None = None,
+def search_document(target_tag: int | None = None,
                     page: int | None = None,
                     author_name: str | None = None,
                     source_document_id: str | None = None,
@@ -154,8 +154,8 @@ def search_document(tag_id: int | None = None,
         except ReferenceError as ref_err:
             raise fastapi.HTTPException(status_code=fastapi.status.HTTP_400_BAD_REQUEST, detail=str(ref_err))
         total_count = 1
-    elif tag_id:
-        total_count, documents_info = db.paginate_query(db.query_by_tags([tag_id]),
+    elif target_tag:
+        total_count, documents_info = db.paginate_query(db.query_by_tags([target_tag]),
                                                         target_page, PAGE_COUNT)
     elif author_name:
         total_count, documents_info = db.paginate_query(db.query_by_author(author_name),
