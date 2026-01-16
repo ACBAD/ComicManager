@@ -134,7 +134,7 @@ function switchPage(event) {
 
 
 /**
- * @typedef {{target_tag: number, author_name: string, target_page: number}} SearchArgs
+ * @typedef {{target_tag: number, author_name: string, page: number}} SearchArgs
  */
 
 /**
@@ -145,7 +145,7 @@ function switchPage(event) {
 
 function updateSearchArgs(target_page) {
     if (target_page === null)target_page = 1;
-    let search_args = {target_tag: 0, author_name: '', target_page: target_page};
+    let search_args = {target_tag: 0, author_name: '', page: target_page};
     const tag_name = document.getElementById('dropdown-input').value;
     const tag_select_list = document.getElementById('dropdown-list');
     let tag_id = 0;
