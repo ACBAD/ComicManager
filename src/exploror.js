@@ -167,10 +167,12 @@ function updateSearchArgs(target_page) {
  * @param {number} document_id
  */
 function requestDeleteDocument(document_id) {
+    const is_confirmed = confirm(`确定要删除id为${document_id}的文档吗`)
+    if (!is_confirmed) return;
     $.ajax({
         type: 'DELETE',
         // 将参数拼接到 URL query string 中，确保 FastAPI 能正确读取
-        url: '/' + document_id,
+        url: '/api/documents/' + document_id,
         success: function (response) {
             alert('删除成功');
             // 3. 刷新当前页面列表
