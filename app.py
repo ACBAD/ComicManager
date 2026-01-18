@@ -120,6 +120,7 @@ async def get_download_status():
                  dependencies=[fastapi.Depends(Authoricator())],
                  name='site.get_download_status')
 async def get_status() -> dict[str, TaskStatus]:
+
     return task_status
 
 
