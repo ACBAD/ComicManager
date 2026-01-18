@@ -10,9 +10,9 @@ import document_db
 import shutil
 from pydantic import BaseModel
 from typing import Optional
-from setup_logger import get_logger
+from setup_logger import getLogger
 
-logger = get_logger('HitomiPlugin')
+logger, setLoggerLevel, _ = getLogger('HitomiPlugin')
 
 
 class AddComicRequest(BaseModel):
@@ -29,9 +29,6 @@ class AddComicResponse(BaseModel):
 # 初始化 Router
 router = APIRouter(tags=["Hitomi"])
 
-# 初始化核心对象
-hitomi = hitomiv2.Hitomi(proxy_settings=hitomiv2.HTTP_PROXY)
-
 
 # --- 后台任务逻辑 ---
 async def refresh_hitomi_loop():
@@ -39,7 +36,7 @@ async def refresh_hitomi_loop():
     while True:
         try:
             try:
-                await hitomi.refresh_version()
+                await hitomiv2.refreshVersion()
             except Exception as e:
                 logger.exception(f"Hitomi 刷新失败，将在下个周期重试。", exc_info=e)
             await asyncio.sleep(3600)
@@ -72,7 +69,7 @@ async def implement_document(comic: hitomiv2.Comic, tags: list[document_sql.Tag]
 
     try:
         with open(raw_comic_path, 'wb') as cf:
-            dl_result = await hitomiv2.download_comic(comic, cf, max_threads=5, phase_callback=phase_callback)
+            dl_result = await hitomiv2.downloadComic(comic, cf, max_threads=5, phase_callback=phase_callback)
     except Exception as dl_e:
         dl_result = dl_e
     if dl_result is False:
@@ -123,7 +120,7 @@ async def add_comic_post(request: AddComicRequest,
                          bg_tasks: BackgroundTasks,
                          db: document_db.DocumentDB = Depends(get_db)) -> AddComicResponse:
     try:
-        hitomi_result = await hitomi.get_comic(request.source_document_id)
+        hitomi_result = await hitomiv2.getComic(request.source_document_id)
     except Exception as e:
         return AddComicResponse(success=False, message=str(e))
     db_result = db.search_by_source(source_document_id=request.source_document_id)
@@ -170,7 +167,7 @@ async def get_missing_tags(source_document_id: str,
     if db_result:
         return []
     try:
-        hitomi_result = await hitomi.get_comic(source_document_id)
+        hitomi_result = await hitomiv2.getComic(source_document_id)
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e))
 

@@ -8,7 +8,8 @@ from typing import Optional, Self
 import aioconsole
 import document_db
 import document_sql
-from hitomiv2 import Hitomi, Tag, Parody, Character, Comic, download_comic
+import hitomiv2
+from hitomiv2 import Tag, Parody, Character, Comic, downloadComic, getComic
 from site_utils import archived_document_path, get_file_hash
 
 RAW_PATH = Path('raw_document')
@@ -129,11 +130,11 @@ async def implement_tags(comic: Comic, db: document_db.DocumentDB) -> list[docum
     return comic_tags
 
 
-async def log_comic(hitomi: Hitomi, db: document_db.DocumentDB, hitomi_id: int):
+async def log_comic(db: document_db.DocumentDB, hitomi_id: int):
     if db.search_by_source(str(hitomi_id)):
         print('已存在')
         return
-    comic = await hitomi.get_comic(hitomi_id)
+    comic = await getComic(hitomi_id)
     print(f'本子名: {comic.title}')
     print('开始录入tag')
     comic_tags = await implement_tags(comic, db)
@@ -155,7 +156,7 @@ async def log_comic(hitomi: Hitomi, db: document_db.DocumentDB, hitomi_id: int):
         print('检测到源文件已存在，跳过下载')
     else:
         with open(raw_comic_path, 'wb') as cf:
-            dl_result = await download_comic(comic, cf, max_threads=5)
+            dl_result = await downloadComic(comic, cf, max_threads=5)
 
     if not dl_result:
         print('下载失败')
@@ -188,13 +189,8 @@ async def log_comic(hitomi: Hitomi, db: document_db.DocumentDB, hitomi_id: int):
     shutil.move(raw_comic_path, final_path)
 
 
-async def init_hitomi(hitomi: Hitomi):
-    await hitomi.refresh_version()
-
-
 if __name__ == '__main__':
-    hitomi_instance = Hitomi(debug_fmt=False)
-    asyncio.run(init_hitomi(hitomi_instance))
+    asyncio.run(hitomiv2.refreshVersion())
     id_iter = None
     task_list = []
     raw_file_list = os.listdir(RAW_PATH)
@@ -227,5 +223,5 @@ if __name__ == '__main__':
                 continue
             hitomi_id_g = extract_result
         with document_db.DocumentDB() as db_g:
-            asyncio.run(log_comic(hitomi_instance, db_g, hitomi_id_g))
+            asyncio.run(log_comic(db_g, hitomi_id_g))
     print('录入完成')

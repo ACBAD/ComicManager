@@ -8,7 +8,6 @@ import sqlmodel
 from sqlalchemy.exc import NoResultFound
 # noinspection PyProtectedMember
 from sqlmodel.sql._expression_select_cls import SelectOfScalar
-
 import document_sql
 
 try:
@@ -426,8 +425,7 @@ async def update_hitomi_file_hash(hitomi_id_list: list[int], idb: DocumentDB):
         hitomiv2 = None
         sys.exit(4)
     temp_document_content_path = Path('temp_document_content')
-    hitomi = hitomiv2.Hitomi(proxy_settings=os.environ.get('HTTP_PROXY', None))
-    await hitomi.refresh_version()
+    await hitomiv2.refreshVersion()
 
     for ihid in hitomi_id_list:
         # 查找数据库中关联了该 source_id 的文档
@@ -441,7 +439,7 @@ async def update_hitomi_file_hash(hitomi_id_list: list[int], idb: DocumentDB):
         temp_file_path = temp_document_content_path / Path(f'{ihid}.zip')
         comic_file = open(temp_file_path, 'wb')
         try:
-            document = await hitomi.get_comic(ihid)
+            document = await hitomiv2.getComic(ihid)
             dl_result = await document.download(comic_file, max_threads=5)  # 假设返回文件路径字符串
             if not dl_result:
                 raise RuntimeError("Download failed")

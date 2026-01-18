@@ -15,7 +15,7 @@ pyzipper
 fastapi
 pydantic
 sqlmodel
-httpx
+httpx[http2]
 aiofiles
 jinja2
 aioconsole

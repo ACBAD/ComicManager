@@ -10,7 +10,7 @@ import natsort
 import zipfile
 import io
 from pathlib import Path
-from setup_logger import get_logger
+from setup_logger import getLogger
 import document_sql
 import fastapi
 import aiofiles
@@ -18,7 +18,7 @@ import json
 
 archived_document_path = Path('archived_documents')
 thumbnail_folder = Path('thumbnail')
-logger = get_logger('SiteUtils')
+logger, setLoggerLevel, _ = getLogger('SiteUtils')
 
 
 class UserAbilities(enum.Enum):

@@ -15,7 +15,6 @@ except ImportError:
         return hash_md5.hexdigest()
     archived_comic_path = None
 from Comic_DB import ComicDB
-from hitomiv2 import Hitomi
 import sys
 import shutil
 import requests
@@ -90,8 +89,6 @@ def recoveryFromLocalDB(db: ComicDB):
         else:
             print(f"ID:{comic_id} 文件下载失败, 源ID:{source_comic_id}")
 
-
-hitomi_instance = Hitomi(storage_path_fmt='raw_comic', proxy_settings={'http': HTTPS_PROXY, 'https': HTTPS_PROXY})
 
 REMOTE_TEMPFILE = None
 if REMOTE_FILE:
