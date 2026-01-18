@@ -2,7 +2,3 @@
 	path = Hitomi_Downloader
 	url = https://github.com/ACBAD/Hitomi_Downloader.git
 	branch = master
-[submodule "LanZouCloud-API"]
-	path = LanZouCloud-API
-	url = https://github.com/ACBAD/LanZouCloud-API.git
-	branch = master
