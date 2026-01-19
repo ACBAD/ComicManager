@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Hitomi Utils</title>
+    <link rel="stylesheet" href="/src/hitomi.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="/src/hitomi_utils.js" defer></script>
+</head>
+<body>
+<div class="container">
+    <h2>Hitomi Utils</h2>
+    <form id="submit-form">
+        <div class="form-group">
+            <label for="hitomi-id-input">Hitomi ID:</label>
+            <input id="hitomi-id-input" required class="form-control" placeholder="hitomi id" />
+        </div>
+        <div id="dynamic-fields"></div>
+        <button type="submit" class="submit-btn" id="submitBtn">Go to Submit</button>
+    </form>
+    <form id="search-form">
+        <div class="form-group">
+            <label for="search-string">Search String:</label>
+            <input id="search-string" required class="form-control" placeholder="search string" />
+        </div>
+        <div id="status-msg" style="display: none;">
+            <span class="loading-spinner"></span>后端正在搜索...
+        </div>
+        <button type="submit" class="submit-btn" id="searchBtn">Submit Search</button>
+    </form>
+</div>
+</body>
+</html>

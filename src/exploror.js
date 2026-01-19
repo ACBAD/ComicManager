@@ -1,37 +1,22 @@
-document.addEventListener('DOMContentLoaded', () => {
-    const dropdown_seletor = document.getElementById("category-select");
-    const dropdown_input = document.getElementById('dropdown-input');
-    $.ajax({
-        type: 'GET',
-        url: '/api/tags',
-        success: function (response) {
-            for (const [group_id, group_name] of Object.entries(response)) {
-                let new_option = document.createElement('option');
-                new_option.value = group_id;
-                new_option.textContent = group_name.toString();
-                dropdown_seletor.appendChild(new_option);
-            }
-            dropdown_input.placeholder = 'Tag组更新完成, 等待选择tag组';
-        },
-        error: function () {
-            dropdown_input.placeholder = 'Tag组更新失败, 禁用一切';
-            throw new Error();
+const dropdown_seletor = document.getElementById("category-select");
+const dropdown_input = document.getElementById('dropdown-input');
+$.ajax({
+    type: 'GET',
+    url: '/api/tags',
+    success: function (response) {
+        for (const [group_id, group_name] of Object.entries(response)) {
+            let new_option = document.createElement('option');
+            new_option.value = group_id;
+            new_option.textContent = group_name.toString();
+            dropdown_seletor.appendChild(new_option);
         }
-    })
-    const dropdown_list = document.getElementById('dropdown-list');
-    // 添加事件监听，使得点击列表项后填充输入框
-    dropdown_list.addEventListener('click', (e) => {
-        if (e.target.tagName === 'LI') {
-            document.getElementById('dropdown-input').value = e.target.textContent;
-            dropdown_list.style.display = 'none';  // 选中后隐藏下拉列表
-        }
-    });
-    // 点击输入框以外区域时隐藏下拉列表
-    document.addEventListener('click', (e) => {
-        if (!dropdown_list.contains(e.target) && !document.getElementById('dropdown-input').contains(e.target))
-            dropdown_list.style.display = 'none';
-    });
-});
+        dropdown_input.placeholder = 'Tag组更新完成, 等待选择tag组';
+    },
+    error: function () {
+        dropdown_input.placeholder = 'Tag组更新失败, 禁用一切';
+        throw new Error();
+    }
+})
 
 // 根据不可输入下拉列表中的选择来更新可输入下拉列表内容
 function updateDropdownList() {
@@ -89,27 +74,38 @@ function submitAuthorSearch(event) {
     searchDocuments(1);
 }
 
-let documentsContainer;
-$().ready(function () {
-    documentsContainer = document.getElementById('list-container');
-    const title_items = document.getElementsByClassName('title-item');
-    for (let i = 0; i < title_items.length; i++) {
-        title_items[i].addEventListener('click', switchPage);
-    }
-    const now_page_item = document.getElementById('now-page');
-    const total_page_item = document.getElementById('total-page');
-    const now_page_bottom_item = document.getElementById('now-page-bottom');
-    const total_page_bottom_item = document.getElementById('total-page-bottom');
-    const page_sync_observer = new MutationObserver(function (mutations) {
-        // noinspection JSUnusedLocalSymbols
-        mutations.forEach(mutation => {
-            now_page_bottom_item.textContent = now_page_item.textContent;
-            total_page_bottom_item.textContent = total_page_item.textContent;
-        });
+let documents_container = document.getElementById('list-container');
+const title_items = document.getElementsByClassName('title-item');
+for (let i = 0; i < title_items.length; i++) {
+    title_items[i].addEventListener('click', switchPage);
+}
+const now_page_item = document.getElementById('now-page');
+const total_page_item = document.getElementById('total-page');
+const now_page_bottom_item = document.getElementById('now-page-bottom');
+const total_page_bottom_item = document.getElementById('total-page-bottom');
+const page_sync_observer = new MutationObserver(function (mutations) {
+    // noinspection JSUnusedLocalSymbols
+    mutations.forEach(mutation => {
+        now_page_bottom_item.textContent = now_page_item.textContent;
+        total_page_bottom_item.textContent = total_page_item.textContent;
     });
-    page_sync_observer.observe(now_page_item, {characterData: true, subtree: true, childList: true});
-    page_sync_observer.observe(total_page_item, {characterData: true, subtree: true, childList: true});
-})
+});
+page_sync_observer.observe(now_page_item, {characterData: true, subtree: true, childList: true});
+page_sync_observer.observe(total_page_item, {characterData: true, subtree: true, childList: true});
+
+const dropdown_list = document.getElementById('dropdown-list');
+// 添加事件监听，使得点击列表项后填充输入框
+dropdown_list.addEventListener('click', (e) => {
+    if (e.target.tagName === 'LI') {
+        document.getElementById('dropdown-input').value = e.target.textContent;
+        dropdown_list.style.display = 'none';  // 选中后隐藏下拉列表
+    }
+});
+// 点击输入框以外区域时隐藏下拉列表
+document.addEventListener('click', (e) => {
+    if (!dropdown_list.contains(e.target) && !document.getElementById('dropdown-input').contains(e.target))
+        dropdown_list.style.display = 'none';
+});
 
 function switchPage(event) {
     if (event.target.id === 'page-step') {
@@ -340,7 +336,7 @@ function documentCallback(evt){
  * @param {{total_count: number, results: Array<number>}} response
  */
 function unpackSearchResponse(response){
-    documentsContainer.innerHTML = '';
+    documents_container.innerHTML = '';
     let document_count = response.total_count;
     const total_page_item = document.getElementById('total-page');
     total_page_item.textContent = Math.ceil(document_count / 10).toString();
@@ -351,9 +347,9 @@ function unpackSearchResponse(response){
         document_item.setAttribute('hx-trigger', 'load')
         document_item.setAttribute('hx-on::after-request', 'documentCallback(event)')
         // document_item.setAttribute('hx-swap', 'none');
-        documentsContainer.appendChild(document_item);
+        documents_container.appendChild(document_item);
     });
-    htmx.process(documentsContainer);
+    htmx.process(documents_container);
 }
 
 

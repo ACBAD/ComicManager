@@ -21,13 +21,8 @@ class AddComicRequest(BaseModel):
 
 
 class AddComicResponse(BaseModel):
-    success: bool
     message: Optional[str] = None
     redirect_url: Optional[str] = None
-
-
-# 初始化 Router
-router = APIRouter(tags=["Hitomi"])
 
 
 # --- 后台任务逻辑 ---
@@ -100,6 +95,7 @@ async def implement_document(comic: hitomiv2.Comic, tags: list[document_sql.Tag]
     shutil.move(raw_comic_path, final_path)
 
 
+router = APIRouter(tags=["Hitomi"])
 document_router = APIRouter(tags=['Documents', 'API', 'Hitomi'])
 tag_router = APIRouter(tags=['Tags', 'API', 'Hitomi'])
 
@@ -112,6 +108,19 @@ async def add_comic_ui(source_document_id: str):
     return FileResponse('templates/add_hitomi_comic.html')
 
 
+@router.get('/hitomi',
+            response_class=HTMLResponse,
+            dependencies=[Depends(Authoricator())])
+async def hitomi_ui():
+    return FileResponse('templates/hitomi.html')
+
+
+@document_router.get('/search',
+                     dependencies=[Depends(Authoricator())])
+async def search_comic(search_str: str):
+    pass
+
+
 @document_router.post('/add',
                       name='document.add.hitomi',
                       dependencies=[Depends(Authoricator([UserAbilities.CREATE_DOCUMENT,
@@ -122,11 +131,11 @@ async def add_comic_post(request: AddComicRequest,
     try:
         hitomi_result = await hitomiv2.getComic(request.source_document_id)
     except Exception as e:
-        return AddComicResponse(success=False, message=str(e))
+        return AddComicResponse(message=str(e))
     db_result = db.search_by_source(source_document_id=request.source_document_id)
     if db_result:
         task_status.pop(hitomi_result.title, None)
-        return AddComicResponse(success=True, redirect_url=f'/show_document/{db_result.document_id}')
+        return AddComicResponse(redirect_url=f'/show_document/{db_result.document_id}')
     raw_document_tags = log_comic.extract_generic_tags(hitomi_result)
     document_tags = []
     for tag in raw_document_tags:
@@ -136,21 +145,21 @@ async def add_comic_post(request: AddComicRequest,
             continue
         tag_info_by_req = request.inexistent_tags.get(tag.hitomi_name, None)
         if tag_info_by_req is None:
-            return AddComicResponse(success=False, message=f'tag {tag.hitomi_name} not found')
+            return AddComicResponse(message=f'tag {tag.hitomi_name} not found')
         if tag.group_id is None:
             tag.group_id = tag_info_by_req[0]
         if tag.group_id is None:
-            return AddComicResponse(success=False, message=f'group {tag.hitomi_name} not found')
+            return AddComicResponse(message=f'group {tag.hitomi_name} not found')
         if not tag_info_by_req[1]:
-            return AddComicResponse(success=False, message=f'tag {tag.hitomi_name} name not found')
+            return AddComicResponse(message=f'tag {tag.hitomi_name} name not found')
         tag.name = tag_info_by_req[1]
         try:
             db_result = tag.add_db(db)
         except Exception as e:
-            return AddComicResponse(success=False, message=f'tag {tag.hitomi_name} db add failed: {str(e)}')
+            return AddComicResponse(message=f'tag {tag.hitomi_name} db add failed: {str(e)}')
         document_tags.append(db_result)
     bg_tasks.add_task(implement_document, hitomi_result, document_tags)
-    return AddComicResponse(success=True, redirect_url='/show_status')
+    return AddComicResponse(redirect_url='/show_status')
 
 
 class MissingTag(BaseModel):
@@ -170,7 +179,8 @@ async def get_missing_tags(source_document_id: str,
         hitomi_result = await hitomiv2.getComic(source_document_id)
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e))
-
+    if hitomi_result is None:
+        raise HTTPException(status_code=404, detail=f'comic {source_document_id} not found')
     plain_tags = log_comic.extract_generic_tags(hitomi_result)
     tags: list[MissingTag] = []
     for tag in plain_tags:

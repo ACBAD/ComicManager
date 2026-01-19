@@ -22,7 +22,7 @@ logger, setLoggerLevel, _ = getLogger('Site')
 document_router = fastapi.APIRouter(tags=['Documents', 'API'])
 tag_router = fastapi.APIRouter(tags=['Tags', 'API'])
 site_router = fastapi.APIRouter(tags=['Site', 'API'])
-hitomi_router = None
+hitomi_router: fastapi.APIRouter | None = None
 
 try:
     import hitomi_plugin
