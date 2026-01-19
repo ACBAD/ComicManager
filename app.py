@@ -1,6 +1,14 @@
-import document_sql
+import asyncio
+from contextlib import asynccontextmanager
+from pathlib import Path
+
 import fastapi
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.openapi.utils import get_openapi
+from pydantic import BaseModel
+
 import document_db
+from setup_logger import getLogger
 from site_utils import (archived_document_path,
                         get_zip_namelist,
                         create_content_response,
@@ -9,14 +17,8 @@ from site_utils import (archived_document_path,
                         get_db,
                         PAGE_COUNT,
                         task_status,
-                        TaskStatus)
-from contextlib import asynccontextmanager
-from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.openapi.utils import get_openapi
-from pathlib import Path
-from pydantic import BaseModel
-import asyncio
-from setup_logger import getLogger, DEBUG_LEVEL, INFO_LEVEL
+                        TaskStatus,
+                        DocumentMetadata)
 
 logger, setLoggerLevel, _ = getLogger('Site')
 document_router = fastapi.APIRouter(tags=['Documents', 'API'])
@@ -121,13 +123,6 @@ async def get_download_status():
                  name='site.get_download_status')
 async def get_status() -> dict[str, TaskStatus]:
     return task_status
-
-
-class DocumentMetadata(BaseModel):
-    document_info: document_sql.Document
-    document_authors: list[document_sql.Author]
-    document_tags: list[document_sql.Tag]
-    document_pages: list[str]
 
 
 class SearchDocumentResponse(BaseModel):

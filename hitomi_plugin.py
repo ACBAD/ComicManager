@@ -11,6 +11,7 @@ import shutil
 from pydantic import BaseModel
 from typing import Optional
 from setup_logger import getLogger
+from site_utils import DocumentMetadata
 
 logger, setLoggerLevel, _ = getLogger('HitomiPlugin')
 
@@ -116,9 +117,23 @@ async def hitomi_ui():
 
 
 @document_router.get('/search',
+                     name='document.search.hitomi',
                      dependencies=[Depends(Authoricator())])
 async def search_comic(search_str: str):
-    pass
+    raise HTTPException(status_code=500, detail='还没实现, 你先别急')
+
+
+@document_router.get('/get/{hitomi_id}',
+                     name='document.get.hitomi',
+                     dependencies=[Depends(Authoricator())])
+async def get_comic(hitomi_id: int, db: document_db.DocumentDB = Depends(get_db)):
+    document = db.search_by_source(str(hitomi_id), 1)
+    if document is None:
+        raise HTTPException(status_code=404)
+    return DocumentMetadata(document_info=document,
+                            document_tags=document.tags,
+                            document_pages=None,
+                            document_authors=document.authors)
 
 
 @document_router.post('/add',

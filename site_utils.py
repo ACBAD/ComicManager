@@ -21,6 +21,13 @@ thumbnail_folder = Path('thumbnail')
 logger, setLoggerLevel, _ = getLogger('SiteUtils')
 
 
+class DocumentMetadata(BaseModel):
+    document_info: document_sql.Document
+    document_authors: list[document_sql.Author]
+    document_tags: list[document_sql.Tag]
+    document_pages: list[str] | None = None
+
+
 class UserAbilities(enum.Enum):
     CREATE_DOCUMENT = 'document.create'
     DELETE_DOCUMENT = 'document.delete'
