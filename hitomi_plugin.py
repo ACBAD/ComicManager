@@ -119,14 +119,22 @@ async def hitomi_ui():
 @document_router.get('/search',
                      name='document.search.hitomi',
                      dependencies=[Depends(Authoricator())])
-async def search_comic(search_str: str):
-    raise HTTPException(status_code=500, detail='还没实现, 你先别急')
+async def search_comic(search_str: str) -> hitomiv2.Comic:
+    result_ids = await hitomiv2.searchIDs(search_str + ' language:chinese', max_threads=5)
+    if not result_ids:
+        raise HTTPException(status_code=404, detail='未找到中文结果')
+    if len(result_ids) > 1:
+        raise HTTPException(status_code=400, detail='结果过多')
+    comic = await hitomiv2.getComic(result_ids[0])
+    if not comic:
+        raise HTTPException(status_code=500, detail='搜索结果有但是无法获取(?')
+    return comic
 
 
 @document_router.get('/get/{hitomi_id}',
                      name='document.get.hitomi',
                      dependencies=[Depends(Authoricator())])
-async def get_comic(hitomi_id: int, db: document_db.DocumentDB = Depends(get_db)):
+async def get_comic(hitomi_id: int, db: document_db.DocumentDB = Depends(get_db)) -> DocumentMetadata:
     document = db.search_by_source(str(hitomi_id), 1)
     if document is None:
         raise HTTPException(status_code=404)
