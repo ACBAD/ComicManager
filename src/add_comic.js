@@ -1,5 +1,6 @@
 const API_GET_TAGS = '/api/tags/hitomi/missing_tags';
 const API_SUBMIT = '/api/documents/hitomi/add';
+const API_GET_COMIC = '/api/documents/hitomi/get';
 const API_GET_TAG_GROUPS = '/api/tags'
 
 let globalSourceDocId = null;
@@ -36,21 +37,29 @@ async function getMissingTags(source_comic_id) {
     return await response.json();
 }
 
-
+const params = new URLSearchParams(window.location.search);
+const rawSourceDocId = params.get('source_document_id');
+if (!rawSourceDocId) {
+    setErrorMessage("缺少必需参数: source_document_id");
+    throw Error();
+}
+globalSourceDocId = rawSourceDocId;
 const formContent = document.getElementById('dynamic-fields');
+fetch(`${API_GET_COMIC}?hitomi_id=${rawSourceDocId}`).then(response => {
+    if (response.ok)
+        return response.json();
+}).then(document_info => {
+    if (document_info === undefined)
+        return;
+    window.location = `/show_document/${document_info.document_id}`;
+})
 fetch(API_GET_TAG_GROUPS).then(async tag_group_resp => {
     if (!tag_group_resp.ok) {
         setErrorMessage(`请求tag组失败, 错误码: ${tag_group_resp.status}`);
         throw Error();
     }
     tag_dict = await tag_group_resp.json();
-    const params = new URLSearchParams(window.location.search);
-    const rawSourceDocId = params.get('source_document_id');
-    if (!rawSourceDocId) {
-        setErrorMessage("缺少必需参数: source_document_id");
-        throw Error();
-    }
-    globalSourceDocId = rawSourceDocId;
+
     let tags;
     try {
         tags = await getMissingTags(parseInt(rawSourceDocId));

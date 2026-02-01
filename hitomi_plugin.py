@@ -116,19 +116,22 @@ async def hitomi_ui():
     return FileResponse('templates/hitomi.html')
 
 
+MAX_SEARCH_RESULTS = 10
+
+
 @document_router.get('/search',
                      name='document.search.hitomi',
                      dependencies=[Depends(Authoricator())])
-async def search_comic(search_str: str) -> hitomiv2.Comic:
+async def search_comic(search_str: str) -> list[hitomiv2.Comic]:
     result_ids = await hitomiv2.searchIDs(search_str + ' language:chinese', max_threads=5)
     if not result_ids:
         raise HTTPException(status_code=404, detail='未找到中文结果')
-    if len(result_ids) > 1:
+    if len(result_ids) > MAX_SEARCH_RESULTS:
         raise HTTPException(status_code=400, detail='结果过多')
-    comic = await hitomiv2.getComic(result_ids[0])
-    if not comic:
+    comics = [await hitomiv2.getComic(result_id) for result_id in result_ids]
+    if not comics:
         raise HTTPException(status_code=500, detail='搜索结果有但是无法获取(?')
-    return comic
+    return comics
 
 
 @document_router.get('/get/{hitomi_id}',
