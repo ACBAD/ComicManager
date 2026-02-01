@@ -172,3 +172,45 @@ h2 {
     text-align: center;
     display: none;
 }
+/* --- 移动端适配 (Responsive Design) --- */
+@media screen and (max-width: 768px) {
+    body {
+        /* 移动端通常不需要垂直居中，改为顶部对齐防止键盘遮挡 */
+        align-items: flex-start;
+        padding: 15px;
+        min-height: auto; /* 允许内容自然撑开 */
+    }
+
+    .container {
+        /* 减少内边距，腾出空间给内容 */
+        padding: 25px 20px;
+        /* 移动端卡片感不需要太强，减小圆角和阴影 */
+        border-radius: 16px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+        /* 确保宽度占满（减去body的padding） */
+        width: 100%;
+        max-width: 100%;
+    }
+
+    h2 {
+        margin-bottom: 20px;
+        font-size: 1.5rem; /* 调整标题字号适配小屏 */
+    }
+
+    /* 优化表单控件在移动端的显示 */
+    .form-control {
+        font-size: 16px; /* 防止 iOS Safari 输入框自动放大 */
+        padding: 10px 12px;
+    }
+
+    .submit-btn {
+        padding: 12px; /* 稍微减小高度，但保持触控友好 */
+        font-size: 16px;
+    }
+
+    /* 针对动态 Tag 区块的适配 */
+    .tag-section {
+        padding: 15px;
+        margin-bottom: 20px;
+    }
+}

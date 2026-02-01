@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Hitomi Utils</title>
     <link rel="stylesheet" href="/src/hitomi.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -23,11 +24,11 @@
             <label for="search-string">Search String:</label>
             <input id="search-string" required class="form-control" placeholder="search string" />
         </div>
+        <button type="submit" class="submit-btn" id="searchBtn">Submit Search</button>
         <div id="status-msg" style="display: none;">
             <span class="loading-spinner"></span>后端正在搜索...
         </div>
         <div id="comic-list" style="display: none"></div>
-        <button type="submit" class="submit-btn" id="searchBtn">Submit Search</button>
     </form>
 </div>
 </body>
