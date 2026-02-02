@@ -224,4 +224,4 @@ if __name__ == '__main__':
                         help='目标功能')
     args = parser.parse_args()
     if args.function == 'clean':
-        pass
+        clean_up()

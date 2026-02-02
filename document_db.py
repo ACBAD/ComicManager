@@ -23,12 +23,8 @@ except ImportError:
             while chunk := fi.read(chunk_size):
                 hash_md5.update(chunk)
         return hash_md5.hexdigest()
-
-
     archived_document_path = Path(".")  # Fallback path
     thumbnail_folder = Path("thumbnails")
-    getZipNamelist = None
-    getZipImage = None
 
 
 # ==========================================
@@ -364,9 +360,9 @@ class DocumentDB:
         base_path = Path(base_path)
         if not base_path.exists():
             return set()
-        local_files = {fi for fi in base_path.iterdir() if fi.is_file()}
-        db_files = {Path(file) for file in self.session.exec(sqlmodel.select(document_sql.Document.file_path)).all()}
-        return local_files - db_files
+        local_files = {fi.name for fi in base_path.iterdir() if fi.is_file()}
+        db_files = {file for file in self.session.exec(sqlmodel.select(document_sql.Document.file_path)).all()}
+        return {Path(file) for file in local_files - db_files}
 
 
 # ==========================================
