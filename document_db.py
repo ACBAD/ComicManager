@@ -470,7 +470,7 @@ if __name__ == '__main__':
             print(f"Found {len(wandering_files_g)} unlinked files.")
             if input("Delete them? (y/n): ") == 'y':
                 for f in wandering_files_g:
-                    os.remove(f)
+                    f.unlink()
                     print(f"Deleted {f.name}")
 
         elif cmd_g == 'fix_hash':
