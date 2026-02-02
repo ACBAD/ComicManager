@@ -65,7 +65,11 @@ async def implement_document(comic: hitomiv2.Comic, tags: list[document_sql.Tag]
 
     try:
         with open(raw_comic_path, 'wb') as cf:
-            dl_result = await hitomiv2.downloadComic(comic, cf, max_threads=5, phase_callback=phase_callback)
+            dl_result = await hitomiv2.downloadComic(comic,
+                                                     cf,
+                                                     max_threads=5,
+                                                     phase_callback=phase_callback,
+                                                     enable_tempfile=False)
     except Exception as dl_e:
         dl_result = dl_e
     if dl_result is False:
