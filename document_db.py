@@ -364,17 +364,9 @@ class DocumentDB:
         base_path = Path(base_path)
         if not base_path.exists():
             return set()
-
-        test_files = [fi for fi in base_path.iterdir() if fi.is_file()]
-        wandering_files = set()
-
-        # 批量获取数据库中所有文件名以优化性能
-        db_files = set(self.session.exec(sqlmodel.select(document_sql.Document.file_path)).all())
-
-        for fi in test_files:
-            if fi.name not in db_files:
-                wandering_files.add(fi)
-        return wandering_files
+        local_files = {fi for fi in base_path.iterdir() if fi.is_file()}
+        db_files = {Path(file) for file in self.session.exec(sqlmodel.select(document_sql.Document.file_path)).all()}
+        return local_files - db_files
 
 
 # ==========================================

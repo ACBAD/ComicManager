@@ -202,3 +202,26 @@ def create_content_response(request: fastapi.Request, document: document_sql.Doc
         media_type=f"image/webp",
         headers=headers
     )
+
+
+def clean_up():
+    with document_db.DocumentDB() as db:
+        wandering_files = db.get_wandering_files(archived_document_path)
+        user_input = input(f'将要清理 {len(wandering_files)} 个文件, 输入y继续')
+        if user_input != 'y':
+            print('退出')
+            return
+        for file in user_input:
+            pass
+
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='Site Utils')
+    parser.add_argument('function',
+                        type=str,
+                        choices=['clean'],
+                        help='目标功能')
+    args = parser.parse_args()
+    if args.function == 'clean':
+        pass

@@ -242,6 +242,7 @@ function constructDocument(document_meta) {
     let document_link = document.createElement('a');
     document_link.href = `/show_document/${document_id}`;
     document_link.textContent = document_meta.document_info.title;
+    document_link.target = '_blank';
     document_title.appendChild(document_link);
     document_details.appendChild(document_title);
     document_meta.document_authors.forEach(author_name => {
