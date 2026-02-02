@@ -75,7 +75,8 @@ async def implement_document(comic: hitomiv2.Comic, tags: list[document_sql.Tag]
     if dl_result is False:
         task_status[comic.title].message = '下载失败'
         raw_comic_path.unlink(missing_ok=True)
-    elif isinstance(dl_result, str):
+    else:
+        logger.exception(f'下载时抛出异常', exc_info=dl_result)
         task_status[comic.title].message = f'下载失败, 异常: {dl_result}'
         raw_comic_path.unlink(missing_ok=True)
 
