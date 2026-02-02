@@ -2,7 +2,6 @@ import enum
 import hashlib
 import os
 from email.utils import formatdate
-import document_db
 import pydantic
 from pydantic import BaseModel
 from typing import Optional
@@ -11,7 +10,6 @@ import zipfile
 import io
 from pathlib import Path
 from setup_logger import getLogger
-import document_sql
 import fastapi
 import aiofiles
 import json
@@ -19,13 +17,6 @@ import json
 archived_document_path = Path('archived_documents')
 thumbnail_folder = Path('thumbnail')
 logger, setLoggerLevel, _ = getLogger('SiteUtils')
-
-
-class DocumentMetadata(BaseModel):
-    document_info: document_sql.Document
-    document_authors: list[document_sql.Author]
-    document_tags: list[document_sql.Tag]
-    document_pages: list[str] | None = None
 
 
 class UserAbilities(enum.Enum):
@@ -64,11 +55,6 @@ if auth_file_path.exists():
             logger.warning(f'认证文件不合规, 将忽略: {ve}')
 else:
     logger.warning('认证文件未配置, 默认允许所有人进行任何操作')
-
-
-def get_db():
-    with document_db.DocumentDB() as db:
-        yield db
 
 
 async def get_current_user(request: fastapi.Request) -> UserInfo | None:
@@ -169,7 +155,7 @@ def generate_thumbnail(document_id: int, file_path: Path):
         fu.write(thumbnail_content.read())
 
 
-def create_content_response(request: fastapi.Request, document: document_sql.Document,
+def create_content_response(request: fastapi.Request, document,
                             file_index: int) -> fastapi.responses.Response:
     current_etag = hashlib.md5(f"{document.file_path}-{file_index}".encode()).hexdigest()
     if request.headers.get("if-none-match") == current_etag:
@@ -202,26 +188,3 @@ def create_content_response(request: fastapi.Request, document: document_sql.Doc
         media_type=f"image/webp",
         headers=headers
     )
-
-
-def clean_up():
-    with document_db.DocumentDB() as db:
-        wandering_files = db.get_wandering_files(archived_document_path)
-        user_input = input(f'将要清理 {len(wandering_files)} 个文件, 输入y继续')
-        if user_input != 'y':
-            print('退出')
-            return
-        for file in user_input:
-            pass
-
-
-if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser(description='Site Utils')
-    parser.add_argument('function',
-                        type=str,
-                        choices=['clean'],
-                        help='目标功能')
-    args = parser.parse_args()
-    if args.function == 'clean':
-        clean_up()

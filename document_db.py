@@ -490,3 +490,8 @@ if __name__ == '__main__':
             # 简单的测试逻辑
             cnt_g = len(db_g.get_all_document_ids())
             print(f"Database connected. Total documents: {cnt_g}")
+
+
+def get_db():
+    with DocumentDB() as db:
+        yield db

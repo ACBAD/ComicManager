@@ -6,19 +6,18 @@ import fastapi
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel
-
+import document_sql
 import document_db
+from document_db import get_db
 from setup_logger import getLogger
 from site_utils import (archived_document_path,
                         get_zip_namelist,
                         create_content_response,
                         Authoricator,
                         UserAbilities,
-                        get_db,
                         PAGE_COUNT,
                         task_status,
-                        TaskStatus,
-                        DocumentMetadata)
+                        TaskStatus)
 
 logger, setLoggerLevel, _ = getLogger('Site')
 document_router = fastapi.APIRouter(tags=['Documents', 'API'])
@@ -177,7 +176,7 @@ def add_document(payload: dict = fastapi.Body()):
                      dependencies=[fastapi.Depends(Authoricator())],
                      name='document.get_metadata')
 def get_document_matadata(document_id: int,
-                          db: document_db.DocumentDB = fastapi.Depends(get_db)) -> DocumentMetadata:
+                          db: document_db.DocumentDB = fastapi.Depends(get_db)) -> document_sql.DocumentMetadata:
     if document_id < 0:
         raise fastapi.HTTPException(status_code=fastapi.status.HTTP_400_BAD_REQUEST, detail='自己输了啥心里有数')
     document = db.get_document_by_id(document_id)
@@ -191,7 +190,7 @@ def get_document_matadata(document_id: int,
         raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND, detail=pic_list)
     if document.title in task_status:
         task_status.pop(document.title)
-    return DocumentMetadata(
+    return document_sql.DocumentMetadata(
         document_pages=[f'/api/documents/{document_id}/page/{i}' for i in range(len(pic_list))],
         document_info=document,
         document_tags=document.tags,

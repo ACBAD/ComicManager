@@ -1,5 +1,6 @@
 from typing import Optional, List
 from sqlmodel import Field, SQLModel, Relationship, Index
+from pydantic import BaseModel
 
 
 # ==========================================
@@ -157,3 +158,11 @@ class Document(SQLModel, table=True):
     sources: List[Source] = Relationship(
         back_populates="documents", link_model=DocumentSourceLink
     )
+
+
+class DocumentMetadata(BaseModel):
+    document_info: Document
+    document_authors: list[Author]
+    document_tags: list[Tag]
+    document_pages: list[str] | None = None
+
