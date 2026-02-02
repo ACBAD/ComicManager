@@ -362,7 +362,7 @@ class DocumentDB:
             return set()
         local_files = {fi.name for fi in base_path.iterdir() if fi.is_file()}
         db_files = {file for file in self.session.exec(sqlmodel.select(document_sql.Document.file_path)).all()}
-        return {Path(file) for file in local_files - db_files}
+        return {base_path / Path(file) for file in local_files - db_files}
 
 
 # ==========================================
