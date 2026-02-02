@@ -86,6 +86,7 @@ const COMIC_LIST_DIV = document.getElementById('comic-list');
 SEARCH_BUTTON_DOM.addEventListener('click', ev => {
     ev.preventDefault();
     const search_string = document.getElementById('search-string').value;
+    COMIC_LIST_DIV.textContent = '';
     ev.target.disabled = true;
     LOADING_ICON_DOM.style.display = '';
     fetch(`/api/documents/hitomi/search?search_str=${search_string}`).then(response => {
@@ -106,7 +107,8 @@ SEARCH_BUTTON_DOM.addEventListener('click', ev => {
             let comic_line_h3 = document.createElement('h3');
             comic_line_h3.appendChild(comic_line_a);
             COMIC_LIST_DIV.appendChild(comic_line_h3);
-        })
+        });
+        ev.target.disabled = false;
     }).catch(reason => {
         console.error(reason);
         alert(reason);
