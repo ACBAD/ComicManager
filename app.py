@@ -278,6 +278,22 @@ def get_tags(group_id: int | None = None, db: document_db.DocumentDB = fastapi.D
     return {t.name: t.tag_id for t in db_result}
 
 
+@tag_router.get('/{tag_id}',
+                dependencies=[fastapi.Depends(Authoricator())],
+                name='tags.get')
+def get_tag(tag_id: int, db: document_db.DocumentDB = fastapi.Depends(get_db)):
+    logger.debug('收到tag检索')
+    if tag_id < 0:
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_400_BAD_REQUEST,
+                                    detail='你是人类吗?')
+    tag = db.get_tag(tag_id)
+    if tag is None:
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND,
+                                    detail='没有这个tag')
+    return tag
+
+
+
 @app.get('/show_document/{document_id}',
          response_class=fastapi.responses.HTMLResponse,
          dependencies=[fastapi.Depends(Authoricator())])

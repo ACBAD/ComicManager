@@ -1,44 +1,63 @@
-const dropdown_seletor = document.getElementById("category-select");
-const dropdown_input = document.getElementById('dropdown-input');
-fetch('/api/tags').then(response => {
+const DROPDOWN_SELECTOR = document.getElementById("category-select");
+const DROPDOWN_INPUT = document.getElementById('dropdown-input');
+const DOCUMENTS_CONTAINER = document.getElementById('list-container');
+const NOW_PAGE_H2 = document.getElementById('now-page');
+const TOTAL_PAGE_H2 = document.getElementById('total-page');
+const NOW_PAGE_BOTTOM_H2 = document.getElementById('now-page-bottom');
+const TOTAL_PAGE_BOTTOM_H2 = document.getElementById('total-page-bottom');
+const DROPDOWN_LIST = document.getElementById('dropdown-list');
+const TITLE_ITEMS = document.getElementsByClassName('title-item');
+const DOCUMENT_INPUT = document.getElementById('document-input');
+
+fetch('/api/tags').then(async response => {
     if(!response.ok){
-        dropdown_input.placeholder = 'Tag组更新失败, 禁用一切';
+        DROPDOWN_INPUT.placeholder = 'Tag组更新失败, 禁用一切';
         throw new Error(response.status.toString());
     }
-    for (const [group_id, group_name] of Object.entries(response)) {
-            let new_option = document.createElement('option');
-            new_option.value = group_id;
-            new_option.textContent = group_name.toString();
-            dropdown_seletor.appendChild(new_option);
-        }
-        dropdown_input.placeholder = 'Tag组更新完成, 等待选择tag组';
+    let tag_groups = await response.json()
+    for (const [group_id, group_name] of Object.entries(tag_groups)) {
+        let new_option = document.createElement('option');
+        new_option.value = group_id;
+        new_option.textContent = group_name.toString();
+        console.log(`tag组添加: ${new_option}`)
+        DROPDOWN_SELECTOR.appendChild(new_option);
+    }
+    DROPDOWN_INPUT.placeholder = 'Tag组更新完成, 等待选择tag组';
+    let URL_SEARCH_PARAMS = new URLSearchParams(window.location.search);
+    console.log('查询参数: ' + URL_SEARCH_PARAMS.toString());
+    let query_url_params = URL_SEARCH_PARAMS.toString();
+    fetch(`/api/documents/?${query_url_params}`).then(async response => {
+        console.log('初始化搜索 成功返回');
+        unpackSearchResponse(await response.json());
+        fillSearchArgs(URL_SEARCH_PARAMS);
+    })
+
 }, reason => {
-    dropdown_input.placeholder = 'Tag组更新失败, 禁用一切';
+    DROPDOWN_INPUT.placeholder = 'Tag组更新失败, 禁用一切';
     throw new Error(reason);
 });
 
+
+
 // 根据不可输入下拉列表中的选择来更新可输入下拉列表内容
 function updateDropdownList() {
-    const group_selector = document.getElementById('category-select');
-    const dropdown_list = document.getElementById('dropdown-list');
-    const dropdown_input = document.getElementById('dropdown-input');
-    dropdown_input.placeholder = '等待更新';
-    dropdown_list.innerHTML = '';
-    $.ajax({
-        type: 'GET',
-        url: '/api/tags?group_id=' + group_selector.value,
-        success: function (response) {
-            for (const [tag_name, tag_id] of Object.entries(response)) {
+    DROPDOWN_INPUT.placeholder = '等待更新';
+    DROPDOWN_LIST.innerHTML = '';
+    fetch(`/api/tags?group_id=${DROPDOWN_SELECTOR.value}`).then(async response => {
+        if(!response.ok) {
+            DROPDOWN_INPUT.placeholder = `更新失败: ${response.status}`;
+            return;
+        }
+        let tag_infos = await response.json();
+        for (const [tag_name, tag_id] of Object.entries(tag_infos)) {
                 let new_option = document.createElement('li');
                 new_option.setAttribute('tag-id', tag_id.toString());
                 new_option.textContent = tag_name;
-                dropdown_list.appendChild(new_option);
+                DROPDOWN_LIST.appendChild(new_option);
             }
-            dropdown_input.placeholder = '更新完成, 输入tag部分以选择';
-        },
-        error: function () {
-            dropdown_input.placeholder = '更新失败';
-        }
+            DROPDOWN_INPUT.placeholder = '更新完成, 输入tag部分以选择';
+    }, reason => {
+        DROPDOWN_INPUT.placeholder = `更新失败: ${reason}`;
     })
     // 更新输入框内容
     filterList(); // 输入框内容不变时也要调用一次以保证正确的显示
@@ -67,51 +86,47 @@ function filterList() {
 
 function submitAuthorSearch(event) {
     const author_name = event.target.textContent;
-    let author_input = document.getElementById('document-input');
-    author_input.value = author_name;
-    document.getElementById('dropdown-input').value = '';
-    searchDocuments(1);
+    searchDocuments(parseSearchArgs({author_name: author_name, page: 1, target_tag: 0}));
 }
 
-let documents_container = document.getElementById('list-container');
-const title_items = document.getElementsByClassName('title-item');
-for (let i = 0; i < title_items.length; i++) {
-    title_items[i].addEventListener('click', switchPage);
+function submitTagSearch(event){
+    const tag_id = parseInt(event.target.getAttribute('tag-id'), 10);
+    searchDocuments(parseSearchArgs({target_tag: tag_id, page: 1, author_name: ''}))
 }
-const now_page_item = document.getElementById('now-page');
-const total_page_item = document.getElementById('total-page');
-const now_page_bottom_item = document.getElementById('now-page-bottom');
-const total_page_bottom_item = document.getElementById('total-page-bottom');
-const page_sync_observer = new MutationObserver(function (mutations) {
+
+for (let i = 0; i < TITLE_ITEMS.length; i++) {
+    TITLE_ITEMS[i].addEventListener('click', switchPage);
+}
+
+const PAGE_SYNC_OBSERVER = new MutationObserver(function (mutations) {
     // noinspection JSUnusedLocalSymbols
     mutations.forEach(mutation => {
-        now_page_bottom_item.textContent = now_page_item.textContent;
-        total_page_bottom_item.textContent = total_page_item.textContent;
+        NOW_PAGE_BOTTOM_H2.textContent = NOW_PAGE_H2.textContent;
+        TOTAL_PAGE_BOTTOM_H2.textContent = TOTAL_PAGE_H2.textContent;
     });
 });
-page_sync_observer.observe(now_page_item, {characterData: true, subtree: true, childList: true});
-page_sync_observer.observe(total_page_item, {characterData: true, subtree: true, childList: true});
+PAGE_SYNC_OBSERVER.observe(NOW_PAGE_H2, {characterData: true, subtree: true, childList: true});
+PAGE_SYNC_OBSERVER.observe(TOTAL_PAGE_H2, {characterData: true, subtree: true, childList: true});
 
-const dropdown_list = document.getElementById('dropdown-list');
 // 添加事件监听，使得点击列表项后填充输入框
-dropdown_list.addEventListener('click', (e) => {
+DROPDOWN_LIST.addEventListener('click', (e) => {
     if (e.target.tagName === 'LI') {
         document.getElementById('dropdown-input').value = e.target.textContent;
-        dropdown_list.style.display = 'none';  // 选中后隐藏下拉列表
+        DROPDOWN_LIST.style.display = 'none';  // 选中后隐藏下拉列表
     }
 });
 // 点击输入框以外区域时隐藏下拉列表
 document.addEventListener('click', (e) => {
-    if (!dropdown_list.contains(e.target) && !document.getElementById('dropdown-input').contains(e.target))
-        dropdown_list.style.display = 'none';
+    if (!DROPDOWN_LIST.contains(e.target) && !DROPDOWN_INPUT.contains(e.target))
+        DROPDOWN_LIST.style.display = 'none';
 });
 
 function switchPage(event) {
     if (event.target.id === 'page-step') {
         return;
     }
-    const now_page = parseInt(document.getElementById('now-page').textContent, 10);
-    const total_page = parseInt(document.getElementById('total-page').textContent, 10);
+    const now_page = parseInt(NOW_PAGE_H2.textContent, 10);
+    const total_page = parseInt(TOTAL_PAGE_H2.textContent, 10);
     const page_step = parseInt(document.getElementById('page-step').value, 10) ?
         parseInt(document.getElementById('page-step').value, 10) : 1;
     let target_page = 1;
@@ -124,7 +139,7 @@ function switchPage(event) {
     } else {
         alert('不是翻页按钮，无法应用功能');
     }
-    searchDocuments(target_page);
+    searchDocuments(parseSearchArgs(constructSearchArgs(target_page)));
 }
 
 
@@ -133,13 +148,11 @@ function switchPage(event) {
  */
 
 /**
- *
  * @param {number} target_page
  * @return SearchArgs
  */
-
-function updateSearchArgs(target_page) {
-    if (target_page === null)target_page = 1;
+function constructSearchArgs(target_page) {
+    if (target_page === null)target_page = 1
     let search_args = {target_tag: 0, author_name: '', page: target_page};
     const tag_name = document.getElementById('dropdown-input').value;
     const tag_select_list = document.getElementById('dropdown-list');
@@ -151,9 +164,44 @@ function updateSearchArgs(target_page) {
             console.log('已查询到指定tag: ' + tag_id)
         }
     }
-    search_args.author_name = document.getElementById('document-input').value;
+    search_args.author_name = DROPDOWN_INPUT.value;
     search_args.target_tag = tag_id;
     return search_args;
+}
+
+/**
+ * @param {URLSearchParams} search_params
+ */
+function fillSearchArgs(search_params){
+    let target_tag = search_params.get('target_tag');
+    let author_name = search_params.get('author_name');
+    NOW_PAGE_H2.textContent = search_params.get('page') ? search_params.get('page') : '1';
+    if(author_name)
+        DOCUMENT_INPUT.value = author_name;
+    if(parseInt(target_tag, 10)){
+        fetch(`/api/tags/${target_tag}`).then(async response => {
+            if (!response.ok){
+                alert(`无法获取到目标tag,${response.status}`);
+                return
+            }
+            let tag_info = await response.json();
+            DROPDOWN_INPUT.value = tag_info.name;
+            DROPDOWN_SELECTOR.value = tag_info.group_id.toString();
+            updateDropdownList();
+            DROPDOWN_LIST.style.display = 'none';
+        }).catch(reason => {
+            alert(`无法获取到目标tag,${reason}`);
+        })
+    }
+}
+
+
+/**
+ * @param {SearchArgs} search_args
+ * @return {URLSearchParams} url_params
+ */
+function parseSearchArgs(search_args){
+    return new URLSearchParams(Object.entries(search_args).map(([key, value]) => [key, String(value)]));
 }
 
 
@@ -173,7 +221,7 @@ function requestDeleteDocument(document_id) {
             // 3. 刷新当前页面列表
             const now_page_element = document.getElementById('now-page');
             const now_page = parseInt(now_page_element ? now_page_element.textContent : '1', 10);
-            searchDocuments(now_page);
+            searchDocuments(parseSearchArgs(constructSearchArgs(now_page)));
         } else {
             // 处理非 2xx 响应 (对应 jQuery 的 error 回调)
             let errorMsg = "删除失败";
@@ -262,6 +310,9 @@ function constructDocument(document_meta) {
     document_meta.document_tags.forEach(tag => {
         let single_tag = document.createElement('span');
         single_tag.textContent = tag.name;
+        single_tag.setAttribute('tag-id', tag.tag_id.toString());
+        single_tag.setAttribute('tag-group', tag.group_id.toString());
+        single_tag.addEventListener('click', submitTagSearch);
         document_tags.appendChild(single_tag);
     })
     document_details.appendChild(document_tags);
@@ -275,7 +326,6 @@ function constructDocument(document_meta) {
         requestDeleteDocument(document_id);
     };
     document_details.appendChild(delete_btn);
-
     document_item.appendChild(document_details);
     return document_item;
 }
@@ -304,37 +354,41 @@ function constructDocument(document_meta) {
  * @param {HtmxAfterRequestEvent} evt
  */
 function documentCallback(evt){
-        // 1. 获取上下文
-    const targetDiv = evt.detail.elt;
     const xhr = evt.detail.xhr;
     console.log(`触发documentCallback`)
-    // 2. 检查请求是否成功
     if (evt.detail.successful) {
+        const target_div = evt.detail.elt;
         try {
             // 3. 成功：调用构建函数
             const responseData = JSON.parse(xhr.response);
             const newElement = constructDocument(responseData);
-
             // 4. 替换原对象 (原 div 会从 DOM 中移除，被新 div 取代)
-            if (targetDiv && targetDiv.parentNode) {
-                targetDiv.replaceWith(newElement);
+            if (target_div && target_div.parentNode) {
+                target_div.replaceWith(newElement);
             }
         } catch (err) {
             console.error("构建 DOM 时出错:", err);
-            targetDiv.innerHTML = `<span style="color:red">数据处理异常</span>`;
+            target_div.innerHTML = `<span style="color:red">数据处理异常</span>`;
         }
     } else {
-        // 5. 失败：在原 div 中显示报错信息
-        const errorMsg = xhr.statusText || "未知网络错误";
-        const errorCode = xhr.status;
-
-        targetDiv.innerHTML = `
-            <div style="color: red; border: 1px solid red; padding: 10px;">
-                <strong>加载失败</strong>
-                <p>错误代码: ${errorCode}</p>
-                <p>错误信息: ${errorMsg}</p>
-            </div>
-        `;
+        let error_msg = document.createElement('p');
+        let server_detail = null;
+        if (xhr.response){
+            server_detail = JSON.parse(xhr.response).detail;
+        }
+        error_msg.textContent = server_detail || xhr.statusText || "未知网络错误";
+        let error_code = document.createElement('p');
+        error_code.textContent = xhr.status.toString();
+        let error_div = document.createElement('div');
+        error_div.style.color = 'red';
+        error_div.style.border = '1px solid red';
+        error_div.style.padding = '10px';
+        let strong_info = document.createElement('strong')
+        strong_info.textContent = '加载失败';
+        error_div.appendChild(strong_info);
+        error_div.appendChild(error_code);
+        error_div.appendChild(error_msg);
+        evt.detail.elt.replaceWith(error_div);
     }
 }
 
@@ -343,7 +397,7 @@ function documentCallback(evt){
  * @param {{total_count: number, results: Array<number>}} response
  */
 function unpackSearchResponse(response){
-    documents_container.innerHTML = '';
+    DOCUMENTS_CONTAINER.innerHTML = '';
     let document_count = response.total_count;
     const total_page_item = document.getElementById('total-page');
     total_page_item.textContent = Math.ceil(document_count / 10).toString();
@@ -354,30 +408,23 @@ function unpackSearchResponse(response){
         document_item.setAttribute('hx-trigger', 'load')
         document_item.setAttribute('hx-on::after-request', 'documentCallback(event)')
         // document_item.setAttribute('hx-swap', 'none');
-        documents_container.appendChild(document_item);
+        DOCUMENTS_CONTAINER.appendChild(document_item);
     });
-    htmx.process(documents_container);
+    if (htmx === undefined) {
+        htmx = Object;
+        htmx.process = () => {};
+    }
+    htmx.process(DOCUMENTS_CONTAINER);
 }
 
 
 /**
- *
- * @param {number} target_page
+ * @param {?URLSearchParams} search_params
  */
-function searchDocuments(target_page) {
-    let search_args = updateSearchArgs(target_page);
-    console.log('查询参数: ' + search_args)
-    let query_url_params = new URLSearchParams(Object.entries(search_args).map(([key, value]) => [key, String(value)])).toString();
-    $.ajax({
-        type: 'GET',
-        url: `/api/documents/?${query_url_params}`,
-        contentType: 'application/json;charset=UTF-8',
-        success: function (response) {
-            console.log('search_document 成功返回');
-            unpackSearchResponse(response);
-        }
-    })
-    const now_page_item = document.getElementById('now-page');
-    now_page_item.textContent = search_args.page.toString();
-}
+function searchDocuments(search_params) {
+    if(search_params === null)
+        search_params = parseSearchArgs(constructSearchArgs(1));
 
+    console.log('查询参数: ' + search_params.toString());
+    window.location.search = search_params.toString();
+}

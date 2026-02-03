@@ -189,6 +189,12 @@ class DocumentDB:
         except NoResultFound:
             return None
 
+    def get_tag(self, tag_id: int) -> document_sql.Tag | None:
+        try:
+            return self.session.exec(sqlmodel.select(document_sql.Tag).where(document_sql.Tag.tag_id == tag_id)).one()
+        except NoResultFound:
+            return None
+
     # --- 写入与修改方法 ---
 
     def add_source(self, name: str, base_url: Optional[str] = None) -> Optional[int]:

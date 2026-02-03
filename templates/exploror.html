@@ -6,7 +6,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>文献检索系统</title>
     <link rel="stylesheet" href="/src/exploror.css">
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="/src/exploror.js" defer></script>
     <script src="https://unpkg.com/htmx.org"></script>
 </head>
@@ -36,7 +35,7 @@
             </div>
         </div>
         <input type="text" id="document-input" class="input-item" placeholder="输入title检索">
-        <button type="button" class="input-item" id="submit-button" onclick="searchDocuments(1)">提交</button>
+        <button type="button" class="input-item" id="submit-button" onclick="searchDocuments(null)">提交</button>
     </div>
 <div class="list-class" id="list-container">
     <div class="list-item">
