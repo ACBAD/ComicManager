@@ -1,22 +1,21 @@
 const dropdown_seletor = document.getElementById("category-select");
 const dropdown_input = document.getElementById('dropdown-input');
-$.ajax({
-    type: 'GET',
-    url: '/api/tags',
-    success: function (response) {
-        for (const [group_id, group_name] of Object.entries(response)) {
+fetch('/api/tags').then(response => {
+    if(!response.ok){
+        dropdown_input.placeholder = 'Tag组更新失败, 禁用一切';
+        throw new Error(response.status.toString());
+    }
+    for (const [group_id, group_name] of Object.entries(response)) {
             let new_option = document.createElement('option');
             new_option.value = group_id;
             new_option.textContent = group_name.toString();
             dropdown_seletor.appendChild(new_option);
         }
         dropdown_input.placeholder = 'Tag组更新完成, 等待选择tag组';
-    },
-    error: function () {
-        dropdown_input.placeholder = 'Tag组更新失败, 禁用一切';
-        throw new Error();
-    }
-})
+}, reason => {
+    dropdown_input.placeholder = 'Tag组更新失败, 禁用一切';
+    throw new Error(reason);
+});
 
 // 根据不可输入下拉列表中的选择来更新可输入下拉列表内容
 function updateDropdownList() {
@@ -165,28 +164,35 @@ function updateSearchArgs(target_page) {
 function requestDeleteDocument(document_id) {
     const is_confirmed = confirm(`确定要删除id为${document_id}的文档吗`)
     if (!is_confirmed) return;
-    $.ajax({
-        type: 'DELETE',
-        // 将参数拼接到 URL query string 中，确保 FastAPI 能正确读取
-        url: '/api/documents/' + document_id,
-        success: function (response) {
+    fetch(`/api/documents/${document_id}`, {
+        method: 'DELETE'
+    }).then(async response => {
+        // fetch 不会将 4xx/5xx 视为异常，需通过 response.ok 判断
+        if (response.ok) {
             alert('删除成功');
             // 3. 刷新当前页面列表
-            const now_page = parseInt(document.getElementById('now-page').textContent, 10);
+            const now_page_element = document.getElementById('now-page');
+            const now_page = parseInt(now_page_element ? now_page_element.textContent : '1', 10);
             searchDocuments(now_page);
-        },
-        error: function (xhr) {
-            // 处理错误返回 (403 Forbidden 或 400 Bad Request)
+        } else {
+            // 处理非 2xx 响应 (对应 jQuery 的 error 回调)
             let errorMsg = "删除失败";
-            if (xhr.responseJSON && xhr.responseJSON.detail) {
-                errorMsg += ": " + xhr.responseJSON.detail;
-            } else if (xhr.status === 403) {
+            // 尝试读取并解析 JSON 响应体以获取 detail
+            const data = await response.json();
+            if (data && data.detail) {
+                errorMsg += ": " + data.detail;
+            }
+            else if (response.status === 403) {
                 errorMsg += ": 权限不足";
             } else {
-                errorMsg += ": 未知错误";
+                errorMsg += ": 未知错误 (" + response.status + ")";
             }
             alert(errorMsg);
         }
+    }).catch(error => {
+        // 处理网络故障（如 DNS 解析失败、拒绝连接等）
+        console.error('Fetch error:', error);
+        alert("删除失败: 网络请求错误");
     });
 }
 
