@@ -164,7 +164,7 @@ function constructSearchArgs(target_page) {
             console.log('已查询到指定tag: ' + tag_id)
         }
     }
-    search_args.author_name = DROPDOWN_INPUT.value;
+    search_args.author_name = DOCUMENT_INPUT.value;
     search_args.target_tag = tag_id;
     return search_args;
 }

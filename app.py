@@ -264,7 +264,7 @@ def get_document_thmubnail(request: fastapi.Request,
 @tag_router.get('/',
                 dependencies=[fastapi.Depends(Authoricator())],
                 name='tags.search')
-def get_tags(group_id: int | None = None, db: document_db.DocumentDB = fastapi.Depends(get_db)):
+def get_tags(group_id: int | None = None, db: document_db.DocumentDB = fastapi.Depends(get_db)) -> dict[str, int | None] | dict[int, str]:
     logger.debug('收到tag查询')
     if group_id is None:
         return {tag_group.tag_group_id: tag_group.group_name for tag_group in db.get_tag_groups()}
@@ -281,7 +281,7 @@ def get_tags(group_id: int | None = None, db: document_db.DocumentDB = fastapi.D
 @tag_router.get('/{tag_id}',
                 dependencies=[fastapi.Depends(Authoricator())],
                 name='tags.get')
-def get_tag(tag_id: int, db: document_db.DocumentDB = fastapi.Depends(get_db)):
+def get_tag(tag_id: int, db: document_db.DocumentDB = fastapi.Depends(get_db)) -> document_sql.Tag:
     logger.debug('收到tag检索')
     if tag_id < 0:
         raise fastapi.HTTPException(status_code=fastapi.status.HTTP_400_BAD_REQUEST,
