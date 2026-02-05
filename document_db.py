@@ -2,13 +2,15 @@ import asyncio
 import os
 import shutil
 import sys
+import zipfile
 from pathlib import Path
-from typing import Optional, Union, List, Iterable, Sequence
+from typing import Optional, Union, List, Iterable, Sequence, IO
 import sqlmodel
 from sqlalchemy.exc import NoResultFound
 # noinspection PyProtectedMember
 from sqlmodel.sql._expression_select_cls import SelectOfScalar
 import document_sql
+import yaml
 
 try:
     from site_utils import get_file_hash, archived_document_path, get_zip_namelist, get_zip_image, thumbnail_folder
@@ -61,7 +63,7 @@ class DocumentDB:
             if isinstance(tag_instance, int):
                 tag_ids.add(tag_instance)
             if isinstance(tag_instance, document_sql.Tag):
-                tag_ids.add(tag_instance.id)
+                tag_ids.add(tag_instance.tag_id)
         if not tag_ids:
             return self.query_all_documents()
         # 1. 基础 Join
@@ -434,7 +436,7 @@ async def update_hitomi_file_hash(hitomi_id_list: list[int], idb: DocumentDB):
         comic_file = open(temp_file_path, 'wb')
         try:
             document = await hitomiv2.getComic(ihid)
-            dl_result = await document.download(comic_file, max_threads=5)  # 假设返回文件路径字符串
+            dl_result = await hitomiv2.downloadComic(document, comic_file, max_threads=5)  # 假设返回文件路径字符串
             if not dl_result:
                 raise RuntimeError("Download failed")
 
@@ -460,10 +462,42 @@ async def update_hitomi_file_hash(hitomi_id_list: list[int], idb: DocumentDB):
             temp_file_path.unlink(missing_ok=True)
 
 
+async def export_portable_document(document_id: int,
+                                   db: DocumentDB,
+                                   export_f: IO[bytes]):
+    document = db.get_document_by_id(document_id)
+    if not document:
+        raise FileNotFoundError(f'Document id {document_id} not found')
+    # noinspection PyTypeChecker
+    statement = (
+        sqlmodel.select(document_sql.DocumentSourceLink, document_sql.Source)
+        .join(document_sql.Source, document_sql.DocumentSourceLink.source_id == document_sql.Source.source_id)
+        .where(document_sql.DocumentSourceLink.document_id == document_id)
+    )
+    link, source = db.session.exec(statement).one()
+    document_dict = {
+        'document_metadata': document.model_dump(),
+        'document_authors': [author.model_dump() for author in document.authors],
+        'document_tags': [tag.model_dump() for tag in document.tags],
+        'document_sources': [link.model_dump(), source.model_dump()],
+    }
+    document_path = archived_document_path / document.file_path
+    if not document_path.exists():
+        raise FileNotFoundError(f'document {document_path} not found')
+    document_info_str = yaml.dump(document_dict, encoding='utf-8', allow_unicode=True)
+    with open(document_path, 'rb') as df:
+        while chunk := df.read(8192):
+            export_f.write(chunk)
+    with zipfile.ZipFile(export_f, 'a', zipfile.ZIP_DEFLATED) as zipf:
+        zinfo = zipfile.ZipInfo(f'{document_id}.yaml', date_time=(1980, 1, 1, 0, 0, 0))
+        zinfo.external_attr = 0o100644 << 16
+        zinfo.compress_type = zipfile.ZIP_DEFLATED
+        zipf.writestr(zinfo, document_info_str)
+
+
 if __name__ == '__main__':
     if len(sys.argv) <= 1:
-        print('Usage: python Document_DB.py [clean|fix_hash|hitomi_update|test] [args...]')
-        sys.exit(1)
+        exit(1)
 
     cmd_g = sys.argv[1]
 
@@ -471,27 +505,28 @@ if __name__ == '__main__':
         if cmd_g == 'clean':
             if not archived_document_path:
                 print("Archived path not set")
-                sys.exit(1)
+                exit(1)
             wandering_files_g = db_g.get_wandering_files(archived_document_path)
             print(f"Found {len(wandering_files_g)} unlinked files.")
             if input("Delete them? (y/n): ") == 'y':
                 for f in wandering_files_g:
                     f.unlink()
                     print(f"Deleted {f.name}")
-
         elif cmd_g == 'fix_hash':
             if not archived_document_path:
                 print("Archived path not set")
-                sys.exit(1)
+                exit(1)
             asyncio.run(fix_file_hash(db_g, archived_document_path))
-
         elif cmd_g == 'hitomi_update':
             try:
                 hitomi_id_g = int(sys.argv[2])
                 asyncio.run(update_hitomi_file_hash([hitomi_id_g], db_g))
             except (IndexError, ValueError):
                 print("Invalid Hitomi ID")
-
+        elif cmd_g == 'export':
+            document_id_g = int(sys.argv[2])
+            with open(f'{document_id_g}.zip', 'wb+') as ef:
+                asyncio.run(export_portable_document(document_id_g, db_g, ef))
         elif cmd_g == 'test':
             # 简单的测试逻辑
             cnt_g = len(db_g.get_all_document_ids())

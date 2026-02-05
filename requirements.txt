@@ -19,3 +19,4 @@ httpx[http2]
 aiofiles
 jinja2
 aioconsole
+pyyaml
