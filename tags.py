@@ -5,15 +5,11 @@ import pydantic
 import hashlib
 import json
 import sqlite3
-
-
-class SourceSite(str, enum.Enum):
-    Hitomi = "hitomi"
-    NHentai = "nhentai"
-    JmComic = "jmcomic"
+from sites import SourceSite
 
 class TagGroup(str, enum.Enum):
     Tag = "tag"
+    Property = "property" # 作品属性
     Character = "character" 
     Parody = "parody" # 世界观
     Expo = "expo" # 展会
@@ -57,7 +53,7 @@ class TagGroup(str, enum.Enum):
 # JSON Schema 仍然通常无法反映任意 Python validator 的实现变化。
 # 如果 validator 或迁移语义的变化也需要被感知，应额外为每个站点
 # 模型维护一个显式 META_SCHEMA_REVISION，并将其纳入哈希描述。
-class SpecificTag(pydantic.BaseModel, ABC):
+class SpecificTag[SiteT: SourceSite](pydantic.BaseModel, ABC):
     """
     各站点标签元信息的公共基类。
 
@@ -70,19 +66,7 @@ class SpecificTag(pydantic.BaseModel, ABC):
     )
 
     origin_name: str
-
-    @abstractmethod
-    def generalize(self, manager: "TagManager") -> "GenericTag":
-        """
-        将站点特定的标签元信息转换为通用标签。
-        Args:
-            manager: TagManager 实例
-        Returns:
-            转换后的通用标签。
-        Raises:
-            NoGenericTagError: 如果站点特定标签没有对应的通用标签。
-        """
-        ...
+    site: SiteT
 
     @classmethod
     def specific_field_names(cls) -> tuple[str, ...]:
@@ -134,30 +118,22 @@ class SpecificTag(pydantic.BaseModel, ABC):
         )
 
 
+class NoSpecificTagError(Exception):
+    """当通用标签没有对应的站点特定标签时抛出此异常。"""
+    def __init__(self, tag: "SpecificTag") -> None:
+        self.specific_tag = tag
+        message = f"No specific tag found for: {tag}"
+        super().__init__(message)
+
+
 # --- 站点tag元数据定义开始 ---
 
 class SpecificTagHitomi(SpecificTag):
     site: Literal[SourceSite.Hitomi] = SourceSite.Hitomi
 
-    group: TagGroup
+    group: str
     url: str | None = None
     tag_sex: Literal["male", "female"] | None = None
-
-    def generalize(self, manager: "TagManager") -> "GenericTag":
-        cursor = manager.sqlite_conn.cursor()
-        result = cursor.execute(
-            "SELECT generic_tag_id FROM specific_tags WHERE site = ? AND origin_name = ? AND meta_json = ?",
-            (self.site, self.origin_name, self.dump_specific_json())
-        ).fetchone()
-        result = cursor.execute(
-            "SELECT name, tag_group FROM tags WHERE id = ?",
-            (result[0],)
-        ).fetchone()
-        if result:
-            return GenericTag(tag_group=result[1], name=result[0])
-        else:
-            raise NoGenericTagError(GenericTag(tag_group=self.group, name=self.origin_name))
-
 
 class SpecificTagNHentai(SpecificTag):
     site: Literal[SourceSite.NHentai] = SourceSite.NHentai
@@ -166,7 +142,6 @@ class SpecificTagNHentai(SpecificTag):
 
 class SpecificTagJmComic(SpecificTag):
     site: Literal[SourceSite.JmComic] = SourceSite.JmComic
-
 
 SpecificTagUnion: TypeAlias = Annotated[
     SpecificTagHitomi | SpecificTagNHentai | SpecificTagJmComic,
@@ -181,7 +156,7 @@ class GenericTag(pydantic.BaseModel):
         validate_assignment=True,
     )
 
-    tag_group: TagGroup | str
+    tag_group: TagGroup
     name: str
 
 
@@ -213,64 +188,11 @@ class SpecificTagExistsError(Exception):
         message = f"Specific tag already exists: {specific_tag.origin_name} for site {specific_tag.site}"
         super().__init__(message)
 
-
-def extract_hitomi_tags(hitomi_metas: dict) -> list[SpecificTagHitomi]:
-    """
-    从 Hitomi 文档中提取标签。
-    Args:
-        hitomi_metas: Hitomi 文档的元信息。
-    Returns:
-        提取的Hitomi标签列表。
-    """
-
-    tag_metas: list[SpecificTagHitomi] = []
-
-    # 提取parody标签
-    if "parodys" in hitomi_metas and hitomi_metas["parodys"]:
-        for parody in hitomi_metas["parodys"]:
-            tag_metas.append(
-                SpecificTagHitomi(
-                    group=TagGroup.Parody,
-                    origin_name=parody['parody'],
-                    url=parody.get('url', None),
-                )
-            )
-    
-    # 提取character标签
-    if "characters" in hitomi_metas and hitomi_metas["characters"]:
-        for character in hitomi_metas["characters"]:
-            tag_metas.append(
-                SpecificTagHitomi(
-                    group=TagGroup.Character,
-                    origin_name=character['character'],
-                    url=character.get('url', None),
-                )
-            )
-
-    # 提取tag标签
-    if "tags" in hitomi_metas and hitomi_metas["tags"]:
-        for tag in hitomi_metas["tags"]:
-            tag_sex = None
-            if tag.get('male', False):
-                tag_sex = 'male'
-            elif tag.get('female', False):
-                tag_sex = 'female'
-            tag_metas.append(
-                SpecificTagHitomi(
-                    group=TagGroup.Tag,
-                    origin_name=tag['tag'],
-                    tag_sex=tag_sex,
-                    url=tag.get('url', None),
-                )
-            )
-
-    return tag_metas
-
 class TagManager:
     def __init__(self, sqlite_conn: sqlite3.Connection) -> None:
         self.sqlite_conn = sqlite_conn
 
-    def create_generic_tag(self, name: str, group: TagGroup | str) -> GenericTag:
+    def create_generic_tag(self, name: str, group: TagGroup) -> GenericTag:
         """
         将站点特定的标签元信息转换为通用标签。
         Args:
@@ -369,6 +291,52 @@ class TagManager:
         if row is None:
             raise NoGenericTagError(generic_tag)
         return row[0]
+
+    def get_generic_tag(self, group: TagGroup) -> list[GenericTag]:
+        """
+        获取通用标签。
+        Args:
+            group: 标签组。
+        Returns:
+            通用标签列表。
+        Raises:
+            NoGenericTagError: 如果通用标签不存在。
+        """
+        cursor = self.sqlite_conn.cursor()
+        cursor.execute(
+            "SELECT id FROM tags WHERE tag_group = ?",
+            (group,)
+        )
+        rows = cursor.fetchall()
+        if not rows:
+            raise NoGenericTagError(GenericTag(tag_group=group, name=""))
+        return [GenericTag(tag_group=group, name=row[0]) for row in rows]
+
+    def generalize(self, specific_tag: SpecificTagUnion) -> GenericTag:
+        """
+        将站点特定的标签元信息转换为通用标签。
+        Args:
+            specific_tag: 站点特定标签。
+        Returns:
+            转换后的通用标签。
+        Raises:
+            NoGenericTagError: 如果站点特定标签没有对应的通用标签。
+        """
+        cursor = self.sqlite_conn.cursor()
+        result = cursor.execute(
+            "SELECT generic_tag_id FROM specific_tags WHERE site = ? AND origin_name = ? AND meta_json = ?",
+            (specific_tag.site, specific_tag.origin_name, specific_tag.dump_specific_json())
+        ).fetchone()
+        if not result:
+            raise NoSpecificTagError(specific_tag)
+        result = cursor.execute(
+            "SELECT name, tag_group FROM tags WHERE id = ?",
+            (result[0],)
+        ).fetchone()
+        if result:
+            return GenericTag(tag_group=result[1], name=result[0])
+        else:
+            raise NoSpecificTagError(specific_tag)
 
     def create_specific_tag(self, specific_tag: SpecificTagUnion, generic_tag: GenericTag) -> None:
         """

@@ -2,20 +2,33 @@ import tags
 import json
 import sqlite3
 from typing import Literal
+import handlers
 
 def test_extract_hitomi_tags():
     with sqlite3.connect("document-archive.db") as source_conn, sqlite3.connect('comics.db') as conn:
         cursor = source_conn.cursor()
         res = cursor.execute('SELECT id, source_meta FROM documents')
         manager = tags.TagManager(conn)
+        unique_failed_tags = set()
         for index, row in res.fetchall():
             meta = json.loads(row if row else '{}')
             if not meta:
                 print(f"Document {index}: source_meta is empty, skipping")
                 continue
-            extracted_tags = tags.extract_hitomi_tags(meta)
-            print(f"Document {index}: tag归一化成功: {len(extracted_tags)}个tag")
-        
+            handler = handlers.HitomiHandler()
+            extracted_tags = handler.extract_tags(meta)
+            for tag in extracted_tags:
+                try:
+                    manager.generalize(tag)
+                except tags.NoSpecificTagError as e:
+                    if tag.group != "groups":
+                        unique_failed_tags.add(tag.origin_name)
+                        print(f"Document {index}: tag归一化失败: {tag}, 错误: {e}")
+            # print(f"Document {index}: tag归一化成功: {len(extracted_tags)}个tag")
+    
+    print(f"Total unique failed tags: {len(unique_failed_tags)}")
+    print(f"Unique failed tags: {unique_failed_tags}")
+
 def test_tag_manager():
     with sqlite3.connect(':memory:') as conn:
         # 创建表
@@ -103,3 +116,4 @@ def test_tag_manager():
 
 
 test_tag_manager()
+test_extract_hitomi_tags()

@@ -92,4 +92,25 @@ CREATE TABLE comic_tags (
     FOREIGN KEY (specific_tag_id)
         REFERENCES specific_tags(id)
         ON DELETE CASCADE
-)
+);
+
+CREATE TABLE IF NOT EXISTS comics(
+    id           INTEGER PRIMARY KEY, -- 直接映射DMB后端的ID, 方便后续数据同步和关联
+    title        TEXT    NOT NULL,
+    series_name   TEXT,
+    volume_number INTEGER
+);
+
+-- 为 comics 表中经常用于检索的字段创建索引
+CREATE INDEX IF NOT EXISTS idx_comics_title ON comics (title);
+CREATE INDEX IF NOT EXISTS idx_comics_series ON comics (series_name, volume_number); -- 复合索引，便于按系列和卷号排序/查找
+
+CREATE TABLE IF NOT EXISTS comic_authors (
+    comic_id  INTEGER NOT NULL,
+    author_name TEXT NOT NULL,
+    PRIMARY KEY (comic_id, author_name),
+    FOREIGN KEY (comic_id) REFERENCES comics (id) ON DELETE CASCADE
+);
+
+-- 为连接表中的外键创建索引，以优化反向查询（例如：查询某作者的所有文献）
+CREATE INDEX IF NOT EXISTS idx_comic_author_name ON comic_authors (author_name);

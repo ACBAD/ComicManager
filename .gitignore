@@ -11,6 +11,7 @@ r2.json
 lanzou.json
 apache2.conf
 venv/
+.venv/
 lanzou
 lanzou/
 hitomiv2.py
@@ -20,3 +21,4 @@ hitomi_js
 thumbnail/
 auth.json
 *.db
+tools/
