@@ -1,5 +1,5 @@
 import enum
-from typing import Annotated, Literal, TypeAlias
+from typing import Annotated, Literal, TypeAlias, Sequence
 from abc import ABC, abstractmethod
 import pydantic
 import hashlib
@@ -68,6 +68,15 @@ class SpecificTag[SiteT: SourceSite](pydantic.BaseModel, ABC):
     origin_name: str
     site: SiteT
 
+    @abstractmethod
+    def inference_group(self) -> TagGroup | None:
+        """
+        根据 group 字段的值推断出对应的 TagGroup 枚举值。
+        Returns:
+            TagGroup: 推断出的 TagGroup 枚举值。
+        """
+        ...
+
     @classmethod
     def specific_field_names(cls) -> tuple[str, ...]:
         """
@@ -118,7 +127,7 @@ class SpecificTag[SiteT: SourceSite](pydantic.BaseModel, ABC):
         )
 
 
-class NoSpecificTagError(Exception):
+class SpecificTagNotFoundError(Exception):
     """当通用标签没有对应的站点特定标签时抛出此异常。"""
     def __init__(self, tag: "SpecificTag") -> None:
         self.specific_tag = tag
@@ -134,6 +143,22 @@ class SpecificTagHitomi(SpecificTag):
     group: str
     url: str | None = None
     tag_sex: Literal["male", "female"] | None = None
+
+    def inference_group(self) -> TagGroup | None:
+        if not self.group:
+            return None
+        if self.group in TagGroup.__members__:
+            return TagGroup(self.group)
+        if self.group in ("parody", "parodys"):
+            return TagGroup.Parody
+        if self.group in ("character", "characters"):
+            return TagGroup.Character
+        if self.group in ("group", "groups"):
+            return TagGroup.Group
+        if self.group in ("language", "languages"):
+            return TagGroup.Language
+        return None
+            
 
 class SpecificTagNHentai(SpecificTag):
     site: Literal[SourceSite.NHentai] = SourceSite.NHentai
@@ -160,7 +185,7 @@ class GenericTag(pydantic.BaseModel):
     name: str
 
 
-class NoGenericTagError(Exception):
+class GenericTagNotFoundError(Exception):
     """当站点特定标签没有对应的通用标签时抛出此异常。"""
     def __init__(self, tag: GenericTag) -> None:
         self.generic_tag = tag
@@ -214,6 +239,49 @@ class TagManager:
         except sqlite3.IntegrityError as e:
             raise GenericTagExistsError(GenericTag(tag_group=group, name=name)) from e
 
+    def query_generic_tag(self, group: TagGroup, name: str | None = None) -> list[GenericTag]:
+        """
+        查询通用标签。
+        Args:
+            group: 标签组。
+            name: 标签名称。(可选)
+        Returns:
+            通用标签列表。
+        """
+        cursor = self.sqlite_conn.cursor()
+        if name is None:
+            cursor.execute(
+                "SELECT tag_group, name FROM tags WHERE tag_group = ?",
+                (group,)
+            )
+        else:
+            cursor.execute(
+                "SELECT tag_group, name FROM tags WHERE tag_group = ? AND name = ?",
+                (group, name)
+            )
+        rows = cursor.fetchall()
+        return [GenericTag(tag_group=row[0], name=row[1]) for row in rows]
+
+    def get_specific_tag_id(self, specific_tag: SpecificTagUnion) -> int:
+        """
+        获取站点特定标签的 ID。
+        Args:
+            specific_tag: 站点特定标签。
+        Returns:
+            站点特定标签的 ID。
+        Raises:
+            SpecificTagNotFoundError: 如果站点特定标签不存在。
+        """
+        cursor = self.sqlite_conn.cursor()
+        cursor.execute(
+            "SELECT id FROM specific_tags WHERE site = ? AND origin_name = ? AND meta_json = ?",
+            (specific_tag.site, specific_tag.origin_name, specific_tag.dump_specific_json())
+        )
+        row = cursor.fetchone()
+        if row is None:
+            raise SpecificTagNotFoundError(specific_tag)
+        return row[0]
+
     def get_linked_tags(self, generic_tag: GenericTag) -> list[SpecificTagUnion]:
         """
         获取与通用标签关联的所有站点特定标签。
@@ -222,7 +290,7 @@ class TagManager:
         Returns:
             与通用标签关联的站点特定标签列表。
         Raises:
-            NoGenericTagError: 如果通用标签不存在。
+            GenericTagNotFoundError: 如果通用标签不存在。
         """
         generic_tag_id = self._get_generic_tag_id(generic_tag)
         rows = self.sqlite_conn.execute(
@@ -280,7 +348,7 @@ class TagManager:
         Returns:
             通用标签的 ID。
         Raises:
-            NoGenericTagError: 如果通用标签不存在。
+            GenericTagNotFoundError: 如果通用标签不存在。
         """
         cursor = self.sqlite_conn.cursor()
         cursor.execute(
@@ -289,28 +357,28 @@ class TagManager:
         )
         row = cursor.fetchone()
         if row is None:
-            raise NoGenericTagError(generic_tag)
+            raise GenericTagNotFoundError(generic_tag)
         return row[0]
 
-    def get_generic_tag(self, group: TagGroup) -> list[GenericTag]:
+    def get_generic_tag(self, tag_id: int) -> GenericTag:
         """
-        获取通用标签。
+        根据通用标签 ID 获取通用标签。
         Args:
-            group: 标签组。
+            tag_id: 通用标签的 ID。
         Returns:
-            通用标签列表。
+            通用标签。
         Raises:
-            NoGenericTagError: 如果通用标签不存在。
+            GenericTagNotFoundError: 如果通用标签不存在。
         """
         cursor = self.sqlite_conn.cursor()
         cursor.execute(
-            "SELECT id FROM tags WHERE tag_group = ?",
-            (group,)
+            "SELECT tag_group, name FROM tags WHERE id = ?",
+            (tag_id,)
         )
-        rows = cursor.fetchall()
-        if not rows:
-            raise NoGenericTagError(GenericTag(tag_group=group, name=""))
-        return [GenericTag(tag_group=group, name=row[0]) for row in rows]
+        row = cursor.fetchone()
+        if row is None:
+            raise ValueError(f"Generic tag with ID {tag_id} not found")
+        return GenericTag(tag_group=row[0], name=row[1])
 
     def generalize(self, specific_tag: SpecificTagUnion) -> GenericTag:
         """
@@ -320,7 +388,8 @@ class TagManager:
         Returns:
             转换后的通用标签。
         Raises:
-            NoGenericTagError: 如果站点特定标签没有对应的通用标签。
+            SpecificTagNotFoundError: 如果站点特定标签没有对应的通用标签。
+            ValueError: 如果通用标签不存在。
         """
         cursor = self.sqlite_conn.cursor()
         result = cursor.execute(
@@ -328,7 +397,7 @@ class TagManager:
             (specific_tag.site, specific_tag.origin_name, specific_tag.dump_specific_json())
         ).fetchone()
         if not result:
-            raise NoSpecificTagError(specific_tag)
+            raise SpecificTagNotFoundError(specific_tag)
         result = cursor.execute(
             "SELECT name, tag_group FROM tags WHERE id = ?",
             (result[0],)
@@ -336,7 +405,29 @@ class TagManager:
         if result:
             return GenericTag(tag_group=result[1], name=result[0])
         else:
-            raise NoSpecificTagError(specific_tag)
+            raise ValueError(f"Generic tag with ID {result[0]} not found for specific tag {specific_tag}")
+
+    def query_similar_tag[TagT: SpecificTagUnion](self, specific_tag: TagT) -> Sequence[TagT]:
+        """
+        查询站点特定标签。
+        Args:
+            specific_tag: 站点特定标签。
+        Returns:
+            站点特定标签列表。
+        """
+        cursor = self.sqlite_conn.cursor()
+        rows = cursor.execute(
+            "SELECT site, origin_name, meta_json FROM specific_tags WHERE site = ? AND origin_name = ?",
+            (specific_tag.site, specific_tag.origin_name)
+        ).fetchall()
+        adapter = pydantic.TypeAdapter(SpecificTagUnion)
+        specific_tags = []
+        for site, origin_name, meta_json in rows:
+            specific_fields = json.loads(meta_json if meta_json else '{}')
+            specific_fields["site"] = site
+            specific_fields["origin_name"] = origin_name
+            specific_tags.append(adapter.validate_python(specific_fields))
+        return specific_tags
 
     def create_specific_tag(self, specific_tag: SpecificTagUnion, generic_tag: GenericTag) -> None:
         """
@@ -345,7 +436,7 @@ class TagManager:
             specific_tag: 站点特定标签。
             generic_tag: 通用标签。
         Raises:
-            NoGenericTagError: 如果通用标签不存在。
+            GenericTagNotFoundError: 如果通用标签不存在。
             MetaSchemaViolationError: 如果站点特定标签的元信息不符合预期的 schema。
             SpecificTagExistsError: 如果站点特定标签已存在。
         """
@@ -374,5 +465,4 @@ class TagManager:
             )
             self.sqlite_conn.commit()
         except sqlite3.IntegrityError as e:
-            print(e)
             raise SpecificTagExistsError(specific_tag) from e

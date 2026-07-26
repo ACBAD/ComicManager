@@ -147,22 +147,34 @@
 
 <script>
     const CONFIG = {
-        apiEndpoint: '/api/site/download_status',
+        apiEndpoint: 'https://dmb.khadas.hayaseyuuka.date:8880/v1/documents/query?token=viewer',
         pollInterval: 1000
     };
 
     /**
+     * @typedef {Object} ProgressData
+     * @property {number} done
+     * @property {number} total
+     */
+
+    /**
+     * @typedef {Object} TaskData
+     * @property {string} title 
+     * @property {number} document_id
+     * @property {string} status
+     * @property {ProgressData} progress
+     * @property {string|null} error
+     */
+
+    /**
      * 渲染主逻辑
-     * @param {Object} tasksDict - 后端返回的字典 { "name": {percent: 10, message: null} }
+     * @param {Array<TaskData>} tasksDict
      */
     function render(tasksDict) {
         const container = document.getElementById('task-list');
 
-        // 字典转 Key 数组，方便后续处理
-        const newTaskNames = Object.keys(tasksDict);
-
         // 处理空状态
-        if (newTaskNames.length === 0) {
+        if (tasksDict.length === 0) {
             container.innerHTML = '<div class="empty-state">当前无下载任务</div>';
             return;
         }
@@ -173,27 +185,23 @@
         }
 
         // 1. 遍历新数据：更新现有任务 或 创建新任务
-        newTaskNames.forEach(name => {
-            const taskData = tasksDict[name];
-            // ID 生成逻辑：base64 编码 name 确保 HTML ID 合法性
-            const safeId = 'task-' + btoa(encodeURIComponent(name)).replace(/[^a-zA-Z0-9]/g, '');
-
-            let card = document.getElementById(safeId);
-
+        tasksDict.forEach(taskData => {
+            const name = taskData.title || `任务-${taskData.document_id}`;
+            let card = document.getElementById(`task-${taskData.document_id}`);
             if (!card) {
-                card = createTaskElement(safeId, name);
+                console.log(`Creating new task card for: ${name}`);
+                card = createTaskElement(`task-${taskData.document_id}`, name);
+                console.log(card);
                 container.appendChild(card);
             }
-
             updateTaskElement(card, taskData);
         });
 
         // 2. 清理逻辑：删除后端字典里已经不存在的任务
-        // 这里的判断逻辑变了：直接检查 DOM 元素的 name 属性是否存在于 tasksDict 中
         Array.from(container.children).forEach(child => {
             const name = child.getAttribute('data-name');
             // 如果 DOM 里的 name 不在后端返回的字典 key 里，说明任务已结束
-            if (name && !tasksDict.hasOwnProperty(name)) {
+            if (name && !tasksDict.some(task => task.title === name)) {
                 child.remove();
             }
         });
@@ -218,17 +226,22 @@
         return div;
     }
 
+    /**
+     * 更新任务元素的进度和状态
+     * @param {HTMLElement} element 
+     * @param {TaskData} data 
+     */
     function updateTaskElement(element, data) {
         const fill = element.querySelector('.progress-fill');
         const text = element.querySelector('.task-percent-text');
         const errorBox = element.querySelector('.error-msg');
 
         // 容错处理：防止后端数据缺失
-        const percent = data.percent || 0;
-        const message = data.message || '';
+        const percent = data.progress?.done / data.progress?.total * 100 || 0;
+        const message = data.error || '';
 
         fill.style.width = `${percent}%`;
-        text.textContent = `${percent}%`;
+        text.textContent = `${percent.toFixed(2)}%`;
 
         if (message) {
             fill.classList.add('error');
@@ -244,13 +257,48 @@
         const statusEl = document.getElementById('connection-status');
 
         try {
-            const response = await fetch(CONFIG.apiEndpoint);
+            let response = await fetch(new Request(CONFIG.apiEndpoint, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                },
+                body: JSON.stringify({
+                    mode: "by_status",
+                    params: {
+                        status: "downloading"
+                    },
+                    orderby: "updated_at",
+                    order: "DESC",
+                    limit: 10
+                })
+            }));
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            
+            /** @type {Array<TaskData>} */
+            let downloadingTasks = await response.json();
 
-            const json = await response.json();
+            response = await fetch(new Request(CONFIG.apiEndpoint, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Accept-Encoding': 'gzip, deflate, br'
+                },
+                body: JSON.stringify({
+                    mode: "by_status",
+                    params: {
+                        status: "failed"
+                    },
+                    orderby: "updated_at",
+                    order: "DESC",
+                    limit: 10
+                })
+            }));
+            /** @type {Array<TaskData>} */
+            let failedTasks = await response.json();
 
             // 这里不需要再像之前那样处理数组兼容了，直接传字典
-            render(json);
+            render(downloadingTasks.concat(failedTasks));
 
             statusEl.textContent = '监控中';
             statusEl.className = 'status-indicator live';

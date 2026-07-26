@@ -17,6 +17,8 @@ class Comic(pydantic.BaseModel):
     title: str
     authors: list[str]
     comic_tags: Sequence[tags.SpecificTagUnion]
+    series_name: str | None = None
+    volume_number: int | None = None
 
     def get_generic_tags(self, manager: tags.TagManager) -> list[tags.GenericTag]:
         """
@@ -48,10 +50,15 @@ class ComicManager:
         if cursor.fetchone():
             raise ComicIDExistsError(comic)
         try:
-            
-            self.conn.execute("INSERT INTO comics (id, title, authors) VALUES (?, ?, ?)", (comic.id, comic.title, ",".join(comic.authors)))
+            self.conn.execute("INSERT INTO comics (id, title, series_name, volume_number) VALUES (?, ?, ?, ?)", (comic.id, comic.title, comic.series_name, comic.volume_number))
+            for author in comic.authors:
+                self.conn.execute("INSERT INTO comic_authors (comic_id, author_name) VALUES (?, ?)", (comic.id, author))
+            for specific_tag in comic.comic_tags:
+                specific_tag_id = self.tag_manager.get_specific_tag_id(specific_tag)
+                self.conn.execute("INSERT INTO comic_tags (comic_id, specific_tag_id) VALUES (?, ?)", (comic.id, specific_tag_id))
             self.conn.commit()
-        except sqlite3.IntegrityError as e:
+            print(f"Comic {comic.id} added successfully.")
+        finally:
             self.conn.rollback()
 
     def get_missing_tags(self, comic: Comic) -> Sequence[tags.SpecificTagUnion]:
@@ -59,7 +66,7 @@ class ComicManager:
         for specific_tag in comic.comic_tags:
             try:
                 self.tag_manager.generalize(specific_tag)
-            except tags.NoSpecificTagError:
+            except tags.SpecificTagNotFoundError:
                 missing_tags.append(specific_tag)
         return missing_tags
 
@@ -82,4 +89,3 @@ class ComicManager:
         comic_tags = handler.extract_tags(source_meta)
         title = handler.get_title(source_meta)
         return Comic(id=comic_id, title=title, authors=authors, comic_tags=comic_tags)
-        ...

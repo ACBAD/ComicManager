@@ -20,7 +20,7 @@ def test_extract_hitomi_tags():
             for tag in extracted_tags:
                 try:
                     manager.generalize(tag)
-                except tags.NoSpecificTagError as e:
+                except tags.SpecificTagNotFoundError as e:
                     if tag.group != "groups":
                         unique_failed_tags.add(tag.origin_name)
                         print(f"Document {index}: tag归一化失败: {tag}, 错误: {e}")
@@ -54,6 +54,9 @@ def test_tag_manager():
 
             def generalize(self, manager: tags.TagManager) -> tags.GenericTag:
                 return tags.GenericTag(name=self.fuck, tag_group=tags.TagGroup.Tag)
+
+            def inference_group(self) -> tags.TagGroup | None:
+                return None
 
         # 测试创建站点特定标签
         hitomi_tag = tags.SpecificTagHitomi(origin_name="test_origin", url="/character/test.html", tag_sex="female", group=tags.TagGroup.Tag)
@@ -93,8 +96,8 @@ def test_tag_manager():
         )
         try:
             manager.get_linked_tags(missing_generic_tag)
-            assert False, "Expected NoGenericTagError"
-        except tags.NoGenericTagError:
+            assert False, "Expected GenericTagNotFoundError"
+        except tags.GenericTagNotFoundError:
             pass
 
         # 仍被来源标签引用的通用标签不能删除。

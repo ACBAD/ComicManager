@@ -22,3 +22,5 @@ thumbnail/
 auth.json
 *.db
 tools/
+*.bak
+docs/
