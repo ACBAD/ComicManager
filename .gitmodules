@@ -1,4 +1,0 @@
-[submodule "Hitomi_Downloader"]
-	path = Hitomi_Downloader
-	url = https://github.com/ACBAD/Hitomi_Downloader.git
-	branch = master
