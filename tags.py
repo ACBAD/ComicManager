@@ -282,6 +282,29 @@ class TagManager:
             raise SpecificTagNotFoundError(specific_tag)
         return row[0]
 
+    def get_specific_tag(self, tag_id: int) -> SpecificTagUnion | None:
+        """
+        根据站点特定标签 ID 获取站点特定标签。
+        Args:
+            tag_id: 站点特定标签的 ID。
+        Returns:
+            站点特定标签或 None。
+        """
+        cursor = self.sqlite_conn.cursor()
+        cursor.execute(
+            "SELECT site, origin_name, meta_json FROM specific_tags WHERE id = ?",
+            (tag_id,)
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        site, origin_name, meta_json = row
+        specific_fields = json.loads(meta_json)
+        specific_fields["site"] = site
+        specific_fields["origin_name"] = origin_name
+        adapter = pydantic.TypeAdapter(SpecificTagUnion)
+        return adapter.validate_python(specific_fields)
+
     def get_linked_tags(self, generic_tag: GenericTag) -> list[SpecificTagUnion]:
         """
         获取与通用标签关联的所有站点特定标签。

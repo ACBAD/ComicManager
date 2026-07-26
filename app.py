@@ -50,7 +50,7 @@ app = fastapi.FastAPI(**app_kwargs) # type: ignore
          include_in_schema=False,
          dependencies=[fastapi.Depends(Authoricator())])
 async def get_open_api_endpoint():
-    return fastapi.responses.JSONResponse(get_openapi(title="DocumentManagerAPI", version="1.0.0", routes=app.routes))
+    return fastapi.responses.JSONResponse(get_openapi(title="ComicManagerAPI", version="1.0.0", routes=app.routes))
 
 
 @app.get("/docs",
@@ -113,9 +113,38 @@ async def get_status() -> dict:
 @tag_router.get('/groups',
                 dependencies=[fastapi.Depends(Authoricator())],
                 name='tags.get_groups')
-def get_tag_groups() -> list[str]:
+async def get_tag_groups() -> list[str]:
     return list(tags.TagGroup)
 
+specific_tag_router = fastapi.APIRouter(tags=['Tags', 'API', 'SpecificTag'])
+
+@specific_tag_router.get('/{tag_id}', 
+                         dependencies=[fastapi.Depends(Authoricator())], 
+                         name='tags.get_specific_tag')
+def get_specific_tag(tag_id: int) -> tags.SpecificTagUnion:
+    tag = tag_manager.get_specific_tag(tag_id)
+    if tag is None:
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND, detail=f"SpecificTag with id {tag_id} not found")
+    return tag
+
+@specific_tag_router.get('/{tag_id}/generic', 
+                         dependencies=[fastapi.Depends(Authoricator())], 
+                         name='tags.get_mapped_generic_tag')
+def get_generic_tag(tag_id: int) -> tags.GenericTag:
+    specific_tag = tag_manager.get_specific_tag(tag_id)
+    if specific_tag is None:
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND, detail=f"SpecificTag with id {tag_id} not found")
+    tag = tag_manager.generalize(specific_tag)
+    if tag is None:
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND, detail=f"GenericTag with id {tag_id} not found")
+    return tag
+
+
+
+generic_tag_router = fastapi.APIRouter(tags=['Tags', 'API', 'GenericTag'])
+
+tag_router.include_router(specific_tag_router, prefix='/specific')
+tag_router.include_router(generic_tag_router, prefix='/generic')
 
 @app.get('/exploror',
          response_class=fastapi.responses.HTMLResponse,
@@ -129,6 +158,6 @@ async def root():
     return fastapi.responses.RedirectResponse(url='/exploror', status_code=fastapi.status.HTTP_303_SEE_OTHER)
 
 
-app.include_router(comics_api, prefix='/api/documents')
+app.include_router(comics_api, prefix='/api/comics')
 app.include_router(tag_router, prefix='/api/tags')
 app.include_router(site_router, prefix='/api/site')

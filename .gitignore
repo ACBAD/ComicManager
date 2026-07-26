@@ -23,4 +23,6 @@ auth.json
 *.db
 tools/
 *.bak
-docs/
+docs/*
+!docs/frontend/
+!docs/frontend/**

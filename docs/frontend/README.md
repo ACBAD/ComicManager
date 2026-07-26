@@ -1,0 +1,61 @@
+# ComicManager 前端设计总览
+
+本文档记录 ComicManager 新版 Web 前端的既定设计。目标是在后续上下文丢失、
+更换实现者或继续重构时，仍能恢复当前的架构边界和交互意图。
+
+最后更新：2026-07-26。
+
+## 阅读顺序
+
+1. [API 对接约定](api-contract.md)
+2. [漫画录入流程](comic-entry-flow.md)
+3. [页面与交互规格](ui-spec.md)
+4. [前端状态与异常处理](frontend-state.md)
+
+## 项目边界
+
+Tag 是整个 ComicManager 的一级资源，不是漫画录入流程的内部数据。
+
+API 分为两个资源域：
+
+- `/api/tags` 管理 TagGroup、GenericTag、SpecificTag 及它们的映射关系。
+- `/api/comics` 负责预览和提交漫画。
+
+不建立 `/api/comic-imports` 这一类只服务于归一化页面的专用资源。漫画录入页面
+只是 `/api/tags` 和 `/api/comics` 的一个客户端。
+
+## 已确定的核心规则
+
+1. `SpecificTag` 的身份由 `site + origin_name + canonical meta_json` 决定。
+2. 一个 `SpecificTag` 必须且只能映射到一个 `GenericTag`。
+3. 多个不同 metadata 的 `SpecificTag` 可以映射到同一个 `GenericTag`。
+   Hitomi 的 male/female 同名 tag 就属于这种情况。
+4. `GenericTag` 是不同来源标签的最大公约数；需要细粒度信息时直接查询
+   `SpecificTag`。
+5. Hitomi 原始 group 保留为字符串。无法推断 `TagGroup` 时必须人工选择，
+   不允许自动 fallback 到 `tag`。
+6. `GET /api/comics/{comic_id}/preview` 负责读取归档 metadata，并由服务端
+   `SiteHandler` 提取 Comic 和 SpecificTag。
+7. 前端通过通用 Tag API 查询和补齐映射。
+8. `POST /api/comics/{comic_id}/commit` 不接收映射决定。它重新读取来源数据，
+   并在所有 SpecificTag 已经具有唯一映射时才录入漫画。
+9. Comic commit 必须是单一数据库事务；失败时不得留下部分 Comic 数据。
+
+## 领域词汇
+
+- **GenericTag**：跨站点使用的通用标签，例如 `tag / glasses`。
+- **SpecificTag**：携带站点原始 metadata 的来源标签。
+- **精确映射**：数据库中存在完整 SpecificTag 身份对应的记录。
+- **相似标签**：`site + origin_name` 相同，但 metadata 不同的 SpecificTag。
+- **候选目标**：相似 SpecificTag 当前映射到的 GenericTag。
+- **推断组**：服务端调用 `SpecificTag.inference_group()` 得到的只读建议。
+- **待处理标签**：尚不存在精确映射的 SpecificTag。
+
+## 相关源码
+
+- [`tags.py`](../../tags.py)：Tag 领域模型和数据库操作。
+- [`comics.py`](../../comics.py)：Comic 模型、预览构造与录入逻辑。
+- [`handlers.py`](../../handlers.py)：站点 metadata 解析。
+- [`comic.sql`](../../comic.sql)：Tag 和 Comic 数据库约束。
+- [`test_comics.py`](../../test_comics.py)：当前 CLI 录入流程的行为基线。
+
