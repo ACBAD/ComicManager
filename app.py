@@ -8,6 +8,7 @@ from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel
 from setup_logger import getLogger
 from utils import Authoricator, UserAbilities
+from dmb import DMBClient
 import tags
 import comics
 import sqlite3
@@ -17,8 +18,10 @@ comics_api = fastapi.APIRouter(tags=['Comics', 'API'])
 tag_router = fastapi.APIRouter(tags=['Tags', 'API'])
 site_router = fastapi.APIRouter(tags=['Site', 'API'])
 
-tag_manager = tags.TagManager(sqlite3.connect('comics.db'))
-comic_manager = comics.ComicManager(sqlite3.connect('comics.db'), tag_manager)
+import os
+COMIC_DB_PATH = Path(os.getenv('COMIC_DB_PATH', 'comics.db'))
+
+comic_manager = comics.ComicManager(sqlite3.connect(COMIC_DB_PATH))
 
 app_kwargs = {"docs_url": None, "redoc_url": None, "openapi_url": None}
 
@@ -122,7 +125,7 @@ specific_tag_router = fastapi.APIRouter(tags=['Tags', 'API', 'SpecificTag'])
                          dependencies=[fastapi.Depends(Authoricator())], 
                          name='tags.get_specific_tag')
 def get_specific_tag(tag_id: int) -> tags.SpecificTagUnion:
-    tag = tag_manager.get_specific_tag(tag_id)
+    tag = comic_manager.tag_manager.get_specific_tag(tag_id)
     if tag is None:
         raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND, detail=f"SpecificTag with id {tag_id} not found")
     return tag
@@ -131,20 +134,65 @@ def get_specific_tag(tag_id: int) -> tags.SpecificTagUnion:
                          dependencies=[fastapi.Depends(Authoricator())], 
                          name='tags.get_mapped_generic_tag')
 def get_generic_tag(tag_id: int) -> tags.GenericTag:
-    specific_tag = tag_manager.get_specific_tag(tag_id)
+    specific_tag = comic_manager.tag_manager.get_specific_tag(tag_id)
     if specific_tag is None:
         raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND, detail=f"SpecificTag with id {tag_id} not found")
-    tag = tag_manager.generalize(specific_tag)
+    tag = comic_manager.tag_manager.generalize(specific_tag)
     if tag is None:
         raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND, detail=f"GenericTag with id {tag_id} not found")
     return tag
-
-
 
 generic_tag_router = fastapi.APIRouter(tags=['Tags', 'API', 'GenericTag'])
 
 tag_router.include_router(specific_tag_router, prefix='/specific')
 tag_router.include_router(generic_tag_router, prefix='/generic')
+
+@comics_api.get('/{comic_id}/preview',
+                dependencies=[fastapi.Depends(Authoricator())],
+                name='comics.get_comic_preview')
+def get_comic_preview(comic_id: int) -> dict:
+    comic = comic_manager.get_comic(comic_id)
+    if comic is None:
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND, detail=f"Comic with id {comic_id} not found")
+    return {
+        "id": comic.id,
+        "title": comic.title,
+        "authors": comic.authors,
+        "series_name": comic.series_name,
+        "volume_number": comic.volume_number,
+        "comic_tags": [tag.model_dump_json() for tag in comic.comic_tags]
+    }
+
+dmb_url = os.environ.get('DMB_URL', None)  # Replace with the actual base URL of the DMB API
+if dmb_url is None:
+    raise RuntimeError("DMB_URL environment variable is not set. Please set it to the base URL of the DMB API.")
+import httpx
+httpx.get(f'{dmb_url}/healthz', timeout=20).raise_for_status()  # Test the connection to the DMB API
+dmb_client = DMBClient(base_url=dmb_url)  # Replace with the actual base URL of the DMB API
+
+@comics_api.post('/{comic_id}/commit',
+                 dependencies=[fastapi.Depends(Authoricator())],
+                 name='comics.commit_comic')
+def commit_comic(comic_id: int, allow_override: bool = False):
+    try:
+        comic_data = asyncio.run(dmb_client.fetch_comic_info(str(comic_id)))
+        if 'source' not in comic_data:
+            raise fastapi.HTTPException(status_code=fastapi.status.HTTP_400_BAD_REQUEST, detail="Missing 'source' in comic data")
+        source: tags.SourceSite = tags.SourceSite(comic_data['source'])
+        if 'source_meta' not in comic_data:
+            raise fastapi.HTTPException(status_code=fastapi.status.HTTP_400_BAD_REQUEST, detail="Missing 'source_meta' in comic data")
+        comic = comic_manager.create_comic(source, comic_id, comic_data['source_meta'])
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_400_BAD_REQUEST, detail=f"Invalid comic data: {str(e)}")
+    
+    try:
+        comic_manager.add_comic(comic, allow_override=allow_override)
+    except comics.ComicIDExistsError as e:
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_409_CONFLICT, detail=str(e))
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=fastapi.status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to commit comic: {str(e)}")
+    
+    return fastapi.responses.Response(status_code=fastapi.status.HTTP_201_CREATED)
 
 @app.get('/exploror',
          response_class=fastapi.responses.HTMLResponse,

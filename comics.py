@@ -19,6 +19,7 @@ class Comic(pydantic.BaseModel):
     comic_tags: Sequence[tags.SpecificTagUnion]
     series_name: str | None = None
     volume_number: int | None = None
+    updated_at: str | None = None
 
     def get_generic_tags(self, manager: tags.TagManager) -> list[tags.GenericTag]:
         """
@@ -44,11 +45,16 @@ class ComicManager:
         self.conn = conn
         self.tag_manager = tag_manager
 
-    def add_comic(self, comic: Comic):
+    def add_comic(self, comic: Comic, allow_override: bool = False) -> None:
         # Check if comic with same ID already exists
         cursor = self.conn.execute("SELECT id FROM comics WHERE id = ?", (comic.id,))
         if cursor.fetchone():
-            raise ComicIDExistsError(comic)
+            if not allow_override:
+                raise ComicIDExistsError(comic)
+            else:
+                self.conn.execute("DELETE FROM comic_tags WHERE id = ?", (comic.id,))
+                self.conn.execute("DELETE FROM comic_authors WHERE id = ?", (comic.id,))
+                self.conn.execute("DELETE FROM comics WHERE id = ?", (comic.id,))
         try:
             self.conn.execute("INSERT INTO comics (id, title, series_name, volume_number) VALUES (?, ?, ?, ?)", (comic.id, comic.title, comic.series_name, comic.volume_number))
             for author in comic.authors:
@@ -57,9 +63,30 @@ class ComicManager:
                 specific_tag_id = self.tag_manager.get_specific_tag_id(specific_tag)
                 self.conn.execute("INSERT INTO comic_tags (comic_id, specific_tag_id) VALUES (?, ?)", (comic.id, specific_tag_id))
             self.conn.commit()
-            print(f"Comic {comic.id} added successfully.")
         finally:
             self.conn.rollback()
+
+    def get_comic(self, comic_id: int) -> Comic | None:
+        cursor = self.conn.execute("SELECT id, title, series_name, volume_number, updated_at FROM comics WHERE id = ?", (comic_id,))
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        comic_id, title, series_name, volume_number, updated_at = row
+        cursor = self.conn.execute("SELECT author_name FROM comic_authors WHERE comic_id = ?", (comic_id,))
+        authors = [row[0] for row in cursor.fetchall()]
+        cursor = self.conn.execute("SELECT specific_tag_id FROM comic_tags WHERE comic_id = ?", (comic_id,))
+        specific_tag_ids = [row[0] for row in cursor.fetchall()]
+
+        specific_tags = []
+        for specific_tag_id in specific_tag_ids:
+            specific_tag = self.tag_manager.get_specific_tag(specific_tag_id)
+            if specific_tag is None:
+                # 如果找不到站点特定标签，可能是因为标签已被删除或未正确添加到数据库中。
+                # 这里可以选择记录日志或采取其他措施。
+                raise ValueError(f"SpecificTag with id {specific_tag_id} not found in the database.")
+            else:
+                specific_tags.append(specific_tag)
+        return Comic(id=comic_id, title=title, authors=authors, comic_tags=specific_tags, series_name=series_name, volume_number=volume_number, updated_at=updated_at)
 
     def get_missing_tags(self, comic: Comic) -> Sequence[tags.SpecificTagUnion]:
         missing_tags = []
