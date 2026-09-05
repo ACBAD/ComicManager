@@ -9,6 +9,7 @@
 
 - 首页：`/exploror#/`，支持输入 DMB 文档 ID 和浏览最近归档。
 - 录入工作台：`/exploror#/entry/{comic_id}`。
+- 未完成漫画：`/exploror#/pending`，全量扫描 DMB 和 CM，支持搜索、原因与状态筛选及分页。
 - 通用标签管理：`/exploror#/tags`，支持分类搜索、新建标签、查看来源映射及分页。
 - 页面沿用现有 `/exploror` 和 `/src/{filename}` 路由，未增加后端接口。
 - 使用原生 JavaScript 模块与本地 Bootstrap 5.3.8 资源，无前端构建步骤。
@@ -33,7 +34,7 @@ PY
 .venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
-前端回归测试：`node --test tests/frontend.test.mjs`。不要直接执行根目录旧的
+前端回归测试：`node --test tests/*.test.mjs`。不要直接执行根目录旧的
 `test_comics.py` / `test_tags.py` 做自动测试，它们包含对真实数据库的录入操作。
 
 Bootstrap 文件保留上游 MIT 许可证头，来自
@@ -53,7 +54,7 @@ Tag 是整个 ComicManager 的一级资源，不是漫画录入流程的内部�
 API 分为两个资源域：
 
 - `/api/tags` 管理 TagGroup、GenericTag、SpecificTag 及它们的映射关系。
-- `/api/comics` 负责预览和提交漫画。
+- `/api/comics` 负责已入库漫画的分页读取、预览和提交。
 
 不建立 `/api/comic-imports` 这一类只服务于归一化页面的专用资源。漫画录入页面
 只是 `/api/tags` 和 `/api/comics` 的一个客户端。
@@ -78,6 +79,21 @@ API 分为两个资源域：
 8. `POST /api/comics/{comic_id}/commit` 不接收映射决定。它重新读取来源数据，
    并在所有 SpecificTag 已经具有唯一映射时才录入漫画。
 9. Comic commit 必须是单一数据库事务；失败时不得留下部分 Comic 数据。
+
+## 未完成漫画
+
+- 使用 `GET /api/comics?limit=100&offset=…` 读取全部 CM 记录，并通过响应头总数确认完整性。
+- DMB 以 `mode=all` 分页读取活动记录，再显式查询 `deleted` / `purged`，不遗漏其他状态。
+- 按 DMB `document_id` 与 CM `id` 对应。只有 CM 存在，且其 `updated_at` 严格更晚时才完成；
+  时间相同、时间缺失或无法识别均保留在列表中。解析时统一时区并保留纳秒精度。
+- CM 中单独存在而 DMB 无对应记录的漫画也列出；已删除、已清理、缺少来源数据以及当前后端
+  不支持的来源会显示原因，不提供录入操作。
+- 每页请求最多 100 条，页面只缓存列表所需字段。完整扫描成功后才显示对照结果；
+  请求失败或取消时可重新扫描，离开页面会取消尚未完成的扫描。
+- 页面展示扫描时间，并支持手动重新扫描。各分页请求不共享数据库快照，外部变更后需重新扫描。
+- 从此列表进入工作台时保留返回入口与筛选条件。已有 CM 漫画在复核页明确提示替换范围，
+  用户点击“确认更新漫画”后调用现有 `commit?allow_override=true`；未入库漫画按原流程提交。
+- 返回列表时重新读取 CM 的持久化更新时间，再判断是否完成，不使用提交响应中的空时间或客户端时间。
 
 ## 领域词汇
 

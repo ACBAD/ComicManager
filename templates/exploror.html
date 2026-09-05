@@ -23,6 +23,7 @@
       </a>
       <nav class="main-nav" aria-label="主导航">
         <a id="nav-entry" href="#/" aria-current="page">漫画录入</a>
+        <a id="nav-pending" href="#/pending">未完成漫画</a>
         <a id="nav-tags" href="#/tags">标签管理</a>
       </nav>
       <div class="header-actions">
@@ -84,6 +85,73 @@
       </section>
 
       <section
+        id="pending-page"
+        class="pending-page"
+        hidden
+        aria-labelledby="pending-heading"
+      >
+        <div class="section-heading">
+          <div>
+            <h1 id="pending-heading">未完成漫画</h1>
+            <p>CM 中已有记录，且更新时间晚于 DMB，才算完成。</p>
+          </div>
+          <div class="pending-scan-actions">
+            <button
+              id="pending-cancel"
+              class="btn btn-quiet"
+              type="button"
+              hidden
+            >
+              停止扫描
+            </button>
+            <button
+              id="pending-refresh"
+              class="btn btn-outline-primary"
+              type="button"
+            >
+              重新扫描
+            </button>
+          </div>
+        </div>
+        <div
+          id="pending-progress"
+          class="pending-progress"
+          role="status"
+          aria-live="polite"
+        ></div>
+        <div id="pending-error"></div>
+        <div id="pending-content" hidden>
+          <div id="pending-stats" class="pending-stats"></div>
+          <fieldset id="pending-filters" class="pending-filters">
+            <legend class="visually-hidden">筛选未完成漫画</legend>
+            <div class="pending-search">
+              <label for="pending-search" class="form-label">搜索漫画</label>
+              <input
+                id="pending-search"
+                class="form-control"
+                type="search"
+                placeholder="标题、DMB ID 或来源 ID"
+              />
+            </div>
+            <div>
+              <label for="pending-reason" class="form-label">未完成原因</label>
+              <select id="pending-reason" class="form-select">
+                <option value="all">全部原因</option>
+              </select>
+            </div>
+            <div>
+              <label for="pending-status" class="form-label">DMB 状态</label>
+              <select id="pending-status" class="form-select">
+                <option value="all">全部状态</option>
+              </select>
+            </div>
+          </fieldset>
+          <div id="pending-results" aria-live="polite"></div>
+          <div id="pending-pagination" class="pagination-bar"></div>
+        </div>
+      </section>
+
+      <section
         id="loading-page"
         class="loading-page"
         hidden
@@ -103,7 +171,7 @@
 
       <section id="entry-page" hidden>
         <div class="entry-topline">
-          <a href="#/" class="back-link">← 返回录入</a>
+          <a id="entry-back" href="#/" class="back-link">← 返回录入</a>
           <div class="step-indicator">
             <span class="complete">✓ 读取归档</span><i>—</i
             ><span id="step-tags">02 整理标签</span><i>—</i

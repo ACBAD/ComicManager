@@ -297,6 +297,123 @@ small,
 .archive-section {
   margin-top: 28px;
 }
+.pending-page {
+  margin: 6px auto 40px;
+  max-width: 1320px;
+}
+.pending-page h1 {
+  font-size: 25px;
+  margin-bottom: 0;
+}
+.pending-scan-actions,
+.pending-stats,
+.pending-filters {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.pending-scan-actions {
+  gap: 8px;
+}
+.pending-progress {
+  padding: 22px 0;
+  color: var(--muted);
+}
+.pending-stats {
+  border-block: 1px solid var(--line);
+  padding: 16px 0;
+  font-size: 12px;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+}
+.pending-stats strong {
+  font-size: 15px;
+}
+.pending-stats small {
+  margin-left: auto;
+}
+.pending-filters {
+  margin: 20px 0;
+  align-items: end;
+}
+.pending-filters > div {
+  min-width: 160px;
+}
+.pending-filters .pending-search {
+  flex: 1;
+}
+.pending-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+.pending-table th {
+  color: var(--muted);
+  font-weight: 500;
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.pending-table th:first-child {
+  width: 38%;
+}
+.pending-table th:last-child {
+  width: 122px;
+}
+.pending-table td {
+  padding: 18px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+.pending-table th:first-child,
+.pending-table td:first-child {
+  padding-left: 0;
+}
+.pending-comic strong,
+.pending-comic small {
+  display: block;
+}
+.pending-comic strong {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-weight: 550;
+  line-height: 1.6;
+  margin-bottom: 5px;
+}
+.pending-comic small {
+  font-size: 10px;
+}
+.pending-source-status {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.pending-reason {
+  display: inline-block;
+  padding: 2px 7px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 4px;
+  font-size: 11px;
+}
+.pending-reason.needs-attention {
+  color: #946728;
+  background: #f5eddf;
+}
+.pending-table time {
+  font-size: 11px;
+  color: #657268;
+  font-variant-numeric: tabular-nums;
+}
+.pending-row-action {
+  text-align: right;
+  font-size: 11px;
+}
 .section-heading {
   display: flex;
   justify-content: space-between;
@@ -373,6 +490,18 @@ small,
   margin: 15px 0 28px;
   font-size: 12px;
   color: var(--muted);
+}
+#pending-pagination {
+  flex-wrap: wrap;
+}
+.page-jump {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+.page-jump .form-control {
+  width: 64px;
 }
 .entry-topline {
   display: flex;
@@ -1106,8 +1235,11 @@ small,
 @media (max-width: 767px) {
   .app-header {
     padding: 0 16px;
-    gap: 24px;
-    height: 62px;
+    gap: 0 18px;
+    height: auto;
+    min-height: 100px;
+    flex-wrap: wrap;
+    padding-top: 12px;
   }
   .brand {
     font-size: 15px;
@@ -1118,7 +1250,10 @@ small,
     height: 28px;
   }
   .main-nav {
-    gap: 17px;
+    gap: 25px;
+    order: 3;
+    height: 43px;
+    width: 100%;
   }
   .main-nav a {
     font-size: 12px;
@@ -1128,6 +1263,7 @@ small,
   }
   .header-actions {
     gap: 0;
+    align-self: flex-start;
   }
   .header-actions .btn {
     padding: 5px 7px;
@@ -1138,6 +1274,87 @@ small,
   }
   .home-page {
     margin: 6px auto 28px;
+  }
+  .pending-page > .section-heading {
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .pending-page h1 {
+    font-size: 23px;
+  }
+  .pending-page > .section-heading p {
+    max-width: 270px;
+    font-size: 11px;
+  }
+  .pending-scan-actions {
+    flex-direction: column-reverse;
+    align-items: flex-end;
+    flex-shrink: 0;
+  }
+  .pending-scan-actions .btn {
+    padding: 7px 9px;
+    font-size: 11px;
+  }
+  .pending-stats small {
+    width: 100%;
+    margin-left: 0;
+  }
+  .pending-filters {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .pending-filters > div {
+    min-width: 0;
+    flex: 1;
+  }
+  .pending-filters .pending-search {
+    flex: 0 0 100%;
+  }
+  .pending-table,
+  .pending-table tbody {
+    display: block;
+  }
+  .pending-table thead {
+    position: absolute;
+    clip-path: inset(50%);
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
+  .pending-table tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    padding: 18px 0;
+    border-top: 1px solid var(--line);
+  }
+  .pending-table td {
+    display: block;
+    padding: 0;
+    border: 0;
+  }
+  .pending-table .pending-comic {
+    grid-column: 1 / -1;
+  }
+  .pending-table td:nth-child(2) {
+    grid-row: 3;
+    align-self: end;
+  }
+  .pending-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 3px;
+  }
+  .pending-row-action {
+    grid-column: 2;
+    grid-row: 3;
+    align-self: end;
+  }
+  #pending-pagination > span {
+    flex-basis: 100%;
+    text-align: right;
   }
   .eyebrow {
     font-size: 9px;

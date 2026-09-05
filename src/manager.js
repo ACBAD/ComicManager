@@ -16,6 +16,16 @@ import {
   exactMapping,
   similarCandidates,
 } from "./entry-api.js";
+import {
+  PENDING_REASONS,
+  DMB_STATUSES,
+  timestampNanos,
+  documentSummary,
+  readComicLibrary,
+  readDmbLibrary,
+  compareLibraries,
+  filterPending,
+} from "./pending-comics.js";
 
 const $ = (id) => document.getElementById(id);
 const groupLabel = (group) => `${GROUP_NAMES[group] || group} · ${group}`;
@@ -46,6 +56,21 @@ const state = {
   queueStatus: "all",
   queueGroup: "all",
   archiveOffset: 0,
+  entryReturn: "#/",
+  existingComic: null,
+};
+const pending = {
+  documents: null,
+  comics: null,
+  comparison: null,
+  controller: null,
+  phase: "idle",
+  needsCMRefresh: false,
+  scannedAt: null,
+  offset: 0,
+  search: "",
+  reason: "all",
+  status: "all",
 };
 let dmbUrl = DEFAULT_DMB_URL;
 try {
@@ -193,12 +218,14 @@ const canCommit = () =>
 
 function showPage(view) {
   state.view = view;
-  for (const name of ["home", "entry", "loading", "tags"])
+  for (const name of ["home", "entry", "loading", "tags", "pending"])
     $(name + "-page").hidden = name !== view;
-  $("nav-tags").toggleAttribute("aria-current", view === "tags");
-  $("nav-entry").toggleAttribute("aria-current", view !== "tags");
-  if (view === "tags") $("nav-tags").setAttribute("aria-current", "page");
-  else $("nav-entry").setAttribute("aria-current", "page");
+  const activeNav = view === "tags" || view === "pending" ? view : "entry";
+  for (const name of ["entry", "tags", "pending"]) {
+    if (name === activeNav)
+      $("nav-" + name).setAttribute("aria-current", "page");
+    else $("nav-" + name).removeAttribute("aria-current");
+  }
 }
 
 async function route() {
@@ -219,6 +246,7 @@ async function route() {
   }
   state.hash = hash;
   pageController.abort();
+  pending.controller?.abort();
   pageController = new AbortController();
   searchController?.abort();
   libraryController?.abort();
@@ -228,11 +256,21 @@ async function route() {
   state.message = null;
   state.items = [];
   state.preview = null;
+  state.existingComic = null;
+  state.entryReturn = "#/";
   state.phase = "idle";
   renderMessage();
-  const match = hash.match(/^#\/entry\/(\d+)$/);
+  const match = hash.match(/^#\/entry\/(\d+)(\?from=pending)?$/);
   if (match && Number.isSafeInteger(Number(match[1]))) {
+    state.entryReturn = match[2] ? "#/pending" : "#/";
+    $("entry-back").href = state.entryReturn;
+    $("entry-back").textContent = match[2] ? "← 返回未完成列表" : "← 返回录入";
     await loadEntry(Number(match[1]), version);
+  } else if (hash === "#/pending") {
+    document.title = "未完成漫画 · ComicManager";
+    showPage("pending");
+    if (pending.phase === "ready" && !pending.needsCMRefresh) renderPending();
+    else await scanPending(!!pending.documents && pending.needsCMRefresh);
   } else if (hash === "#/tags") {
     document.title = "标签管理 · ComicManager";
     showPage("tags");
@@ -335,6 +373,322 @@ function empty(title, subtitle = "") {
   ]);
 }
 
+function timeNode(value, absent = "时间缺失") {
+  if (timestampNanos(value) === null)
+    return el(
+      "span",
+      { class: "text-secondary", title: value || "" },
+      value ? "时间无法读取" : absent,
+    );
+  return el(
+    "time",
+    { datetime: value, title: value },
+    new Date(value.replace(" ", "T")).toLocaleString("zh-CN", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }),
+  );
+}
+
+async function scanPending(localOnly = false) {
+  pending.controller?.abort();
+  const controller = (pending.controller = new AbortController());
+  const signal = AbortSignal.any([controller.signal, pageController.signal]);
+  const current = () =>
+    pending.controller === controller &&
+    state.view === "pending" &&
+    !pageController.signal.aborted;
+  pending.phase = "scanning";
+  pending.offset = 0;
+  $("pending-content").hidden = true;
+  $("pending-error").replaceChildren();
+  $("pending-refresh").disabled = true;
+  $("pending-cancel").hidden = false;
+  $("pending-progress").hidden = false;
+  const counts = {
+    dmb: localOnly ? pending.documents.size : 0,
+    cm: 0,
+    total: null,
+  };
+  const progress = () => {
+    if (current() && !signal.aborted)
+      $("pending-progress").textContent =
+        `${localOnly ? "正在刷新 CM 状态" : "正在扫描全部记录"}… DMB ${counts.dmb} 条 · CM ${counts.cm}${counts.total === null ? "" : ` / ${counts.total}`} 条`;
+  };
+  progress();
+  const markError = (service) => (error) => {
+    error.service = service;
+    throw error;
+  };
+  try {
+    const [documents, comics] = await Promise.all([
+      localOnly
+        ? Promise.resolve(pending.documents)
+        : readDmbLibrary(dmbUrl, {
+            signal,
+            onProgress: ({ loaded }) => {
+              counts.dmb = loaded;
+              progress();
+            },
+          }).catch(markError("DMB")),
+      readComicLibrary({
+        signal,
+        onProgress: ({ loaded, total }) => {
+          counts.cm = loaded;
+          counts.total = total;
+          progress();
+        },
+      }).catch(markError("CM")),
+    ]);
+    if (!current() || signal.aborted) return;
+    pending.documents = documents;
+    pending.comics = comics;
+    pending.comparison = compareLibraries(documents, comics);
+    pending.phase = "ready";
+    pending.needsCMRefresh = false;
+    if (!localOnly) pending.scannedAt = new Date();
+    if (!localOnly) setService(true);
+    renderPending();
+    announce(
+      `扫描完成，${pending.comparison.pending.length} 部未完成，${pending.comparison.completed} 部已完成。`,
+    );
+  } catch (error) {
+    if (!current()) return;
+    if (signal.aborted) {
+      pending.phase = "stopped";
+      $("pending-progress").textContent =
+        "扫描已停止，重新扫描后查看完整结果。";
+    } else {
+      controller.abort();
+      pending.phase = "error";
+      if (error.service === "DMB") setService(false);
+      $("pending-progress").textContent =
+        "扫描未完成，暂不显示不完整的对照结果。";
+      $("pending-error").replaceChildren(
+        errorBox(
+          error,
+          () => scanPending(localOnly),
+          `${error.service || "服务"}：${error.message}`,
+        ),
+      );
+    }
+  } finally {
+    if (current()) {
+      $("pending-refresh").disabled = false;
+      $("pending-cancel").hidden = true;
+    }
+  }
+}
+
+function pendingAction(row) {
+  const source = row.document;
+  let unavailable = null;
+  if (!source) unavailable = "来源缺失";
+  else if (["deleted", "purged"].includes(source.status))
+    unavailable = DMB_STATUSES[source.status];
+  else if (source.source !== "hitomi") unavailable = "暂不支持此来源";
+  else if (!source.has_metadata) unavailable = "等待来源数据";
+  if (unavailable) return el("span", { class: "text-secondary" }, unavailable);
+  return el(
+    "a",
+    {
+      href: `#/entry/${row.id}?from=pending`,
+      class: "btn btn-sm btn-outline-secondary",
+      "aria-label": `${row.comic ? "重新整理" : "整理"}漫画 #${row.id}`,
+    },
+    row.comic ? "重新整理 →" : "整理标签 →",
+  );
+}
+
+function renderPending() {
+  if (state.view !== "pending" || pending.phase !== "ready") return;
+  const comparison = pending.comparison;
+  $("pending-progress").hidden = true;
+  $("pending-error").replaceChildren();
+  $("pending-content").hidden = false;
+  $("pending-refresh").disabled = false;
+  $("pending-cancel").hidden = true;
+  $("pending-stats").replaceChildren(
+    el("strong", {}, `${comparison.pending.length} 部未完成`),
+    el("span", {}, `${comparison.completed} 部已完成`),
+    el(
+      "span",
+      {},
+      `DMB ${comparison.dmbTotal} 条 · CM ${comparison.cmTotal} 条`,
+    ),
+    el(
+      "small",
+      {},
+      `来源扫描于 ${pending.scannedAt.toLocaleTimeString("zh-CN", { hour12: false })}`,
+    ),
+  );
+  const records = filterPending(comparison.pending, pending);
+  pending.offset = Math.min(
+    pending.offset,
+    Math.max(0, Math.ceil(records.length / 20) - 1) * 20,
+  );
+  const page = records.slice(pending.offset, pending.offset + 20);
+  $("pending-results").replaceChildren(
+    page.length
+      ? el("table", { class: "pending-table" }, [
+          el(
+            "caption",
+            { class: "visually-hidden" },
+            "未完成漫画与两边的更新时间",
+          ),
+          el(
+            "thead",
+            {},
+            el(
+              "tr",
+              {},
+              ["漫画", "未完成原因", "DMB 更新时间", "CM 更新时间", "操作"].map(
+                (name) => el("th", { scope: "col" }, name),
+              ),
+            ),
+          ),
+          el(
+            "tbody",
+            {},
+            page.map((row) =>
+              el("tr", { "data-comic-id": row.id }, [
+                el("td", { class: "pending-comic" }, [
+                  el(
+                    "strong",
+                    { title: row.document?.title || row.comic?.title || "" },
+                    row.document?.title || row.comic?.title || "未命名漫画",
+                  ),
+                  el("small", {}, [
+                    `#${row.id}`,
+                    row.document
+                      ? ` · ${row.document.source} · 来源 #${row.document.source_document_id}`
+                      : " · 仅 CM 中存在",
+                  ]),
+                  el(
+                    "span",
+                    { class: "pending-source-status" },
+                    DMB_STATUSES[row.document?.status] ||
+                      row.document?.status ||
+                      "来源缺失",
+                  ),
+                ]),
+                el(
+                  "td",
+                  { "data-label": "未完成原因" },
+                  el(
+                    "span",
+                    {
+                      class: `pending-reason ${row.reason === "missing" ? "" : "needs-attention"}`,
+                    },
+                    PENDING_REASONS[row.reason],
+                  ),
+                ),
+                el(
+                  "td",
+                  { "data-label": "DMB 更新时间" },
+                  timeNode(
+                    row.document?.updated_at,
+                    row.document ? "时间缺失" : "无对应记录",
+                  ),
+                ),
+                el(
+                  "td",
+                  { "data-label": "CM 更新时间" },
+                  timeNode(
+                    row.comic?.updated_at,
+                    row.comic ? "时间缺失" : "未入库",
+                  ),
+                ),
+                el("td", { class: "pending-row-action" }, pendingAction(row)),
+              ]),
+            ),
+          ),
+        ])
+      : comparison.pending.length
+        ? empty("没有匹配的漫画", "调整搜索内容或筛选条件。")
+        : empty(
+            "没有未完成的漫画",
+            comparison.dmbTotal
+              ? "当前扫描中的记录均已完成。"
+              : "DMB 与 CM 当前都没有记录。",
+          ),
+  );
+  const pageCount = Math.max(1, Math.ceil(records.length / 20));
+  const pageInput = el("input", {
+    id: "pending-page-number",
+    class: "form-control form-control-sm",
+    type: "number",
+    inputmode: "numeric",
+    min: 1,
+    max: pageCount,
+    step: 1,
+    required: true,
+    value: Math.floor(pending.offset / 20) + 1,
+    disabled: records.length === 0,
+    "aria-label": "跳转页码",
+  });
+  const pageJump = el(
+    "form",
+    {
+      class: "page-jump",
+      onsubmit: (event) => {
+        event.preventDefault();
+        if (!pageInput.reportValidity()) return;
+        pending.offset = (pageInput.valueAsNumber - 1) * 20;
+        renderPending();
+        $("pending-results").scrollIntoView({ block: "start" });
+      },
+    },
+    [
+      el("label", { for: "pending-page-number" }, "跳至"),
+      pageInput,
+      el("span", {}, "页"),
+      el(
+        "button",
+        {
+          type: "submit",
+          class: "btn btn-sm btn-outline-secondary",
+          disabled: records.length === 0,
+        },
+        "跳转",
+      ),
+    ],
+  );
+  $("pending-pagination").replaceChildren(
+    el(
+      "span",
+      {},
+      `共 ${records.length} 部 · 第 ${Math.floor(pending.offset / 20) + 1} / ${pageCount} 页`,
+    ),
+    button(
+      "上一页",
+      () => {
+        pending.offset -= 20;
+        renderPending();
+        $("pending-results").scrollIntoView({ block: "start" });
+      },
+      "btn btn-sm btn-quiet",
+      { disabled: pending.offset === 0 },
+    ),
+    button(
+      "下一页",
+      () => {
+        pending.offset += 20;
+        renderPending();
+        $("pending-results").scrollIntoView({ block: "start" });
+      },
+      "btn btn-sm btn-quiet",
+      { disabled: pending.offset + 20 >= records.length },
+    ),
+    pageJump,
+  );
+}
+
 async function loadEntry(
   id,
   version = ++routeVersion,
@@ -359,10 +713,17 @@ async function loadEntry(
       (r) => ({ data: r.data }),
       (error) => ({ error }),
     );
-    const [preview, , source] = await Promise.all([
+    const comicLookup =
+      state.entryReturn === "#/pending"
+        ? pending.comics && !pending.needsCMRefresh
+          ? Promise.resolve(pending.comics)
+          : readComicLibrary({ signal })
+        : Promise.resolve(null);
+    const [preview, , source, comicLibrary] = await Promise.all([
       api(`/comics/${id}/preview`, { signal }),
       loadGroups(signal),
       sourceResult,
+      comicLookup,
     ]);
     if (version !== routeVersion) return;
     const revision = preview.headers.get("ETag")?.replace(/^"|"$/g, "");
@@ -375,6 +736,12 @@ async function loadEntry(
     state.revision = revision;
     state.source = source.data || null;
     state.sourceError = source.error || null;
+    state.existingComic = comicLibrary?.get(id) || null;
+    if (comicLibrary) pending.comics = comicLibrary;
+    if (pending.documents && source.data) {
+      pending.documents.set(id, documentSummary(source.data));
+      pending.needsCMRefresh = true;
+    }
     setService(!source.error);
     state.items = [
       ...new Map(
@@ -448,6 +815,10 @@ async function refreshSource() {
     if (version !== routeVersion) return;
     state.source = data;
     state.sourceError = null;
+    if (pending.documents) {
+      pending.documents.set(state.comicId, documentSummary(data));
+      pending.needsCMRefresh = true;
+    }
     state.message = null;
     setService(true);
     renderMessage();
@@ -1223,8 +1594,14 @@ function renderReview() {
   $("review-panel").replaceChildren(
     el("div", { class: "section-heading review-heading" }, [
       el("div", {}, [
-        el("h2", {}, "最后确认一下。"),
-        el("p", {}, "来源标签已经完成映射，确认以下分类后即可录入漫画。"),
+        el("h2", {}, state.existingComic ? "确认更新漫画" : "最后确认一下。"),
+        el(
+          "p",
+          {},
+          state.existingComic
+            ? "将用当前归档替换 CM 中的漫画信息、作者和标签关联。请确认以下分类。"
+            : "来源标签已经完成映射，确认以下分类后即可录入漫画。",
+        ),
       ]),
       button(
         "← 返回标签整理",
@@ -1236,6 +1613,16 @@ function renderReview() {
         { disabled: state.phase === "committing" },
       ),
     ]),
+    ...(state.existingComic
+      ? [
+          el("p", { class: "review-stats" }, [
+            "CM 更新时间：",
+            timeNode(state.existingComic.updated_at),
+            " · DMB 更新时间：",
+            timeNode(state.source?.updated_at),
+          ]),
+        ]
+      : []),
     el(
       "p",
       { class: "review-stats" },
@@ -1254,7 +1641,15 @@ function renderResult() {
       { class: "result-icon", "aria-hidden": "true" },
       success ? "✓" : "ℹ",
     ),
-    el("h2", {}, success ? "已收进漫画库" : "这部漫画已经录入"),
+    el(
+      "h2",
+      {},
+      success
+        ? state.existingComic
+          ? "漫画已更新"
+          : "已收进漫画库"
+        : "这部漫画已经录入",
+    ),
     el(
       "p",
       {},
@@ -1263,7 +1658,11 @@ function renderResult() {
         : "本次没有覆盖已有漫画。可以返回继续整理其他归档。",
     ),
     el("div", { class: "result-actions" }, [
-      el("a", { href: "#/", class: "btn btn-primary" }, "处理下一部 →"),
+      el(
+        "a",
+        { href: state.entryReturn, class: "btn btn-primary" },
+        state.entryReturn === "#/pending" ? "返回未完成列表 →" : "处理下一部 →",
+      ),
       button(
         "查看本次标签",
         () => {
@@ -1303,13 +1702,19 @@ function renderEntry(editor = true) {
     state.phase === "committing"
       ? "正在录入…"
       : reviewing
-        ? "确认录入漫画"
-        : "复核并录入 →";
+        ? state.existingComic
+          ? "确认更新漫画"
+          : "确认录入漫画"
+        : state.existingComic
+          ? "复核并更新 →"
+          : "复核并录入 →";
   $("footer-hint").textContent = state.pendingWrites
     ? "正在保存，请稍候"
     : unresolved().length
       ? `还有 ${unresolved().length} 个标签待处理`
-      : "全部标签已映射，可以录入";
+      : state.existingComic
+        ? "全部标签已映射，可以更新"
+        : "全部标签已映射，可以录入";
 }
 
 async function commitComic() {
@@ -1322,15 +1727,21 @@ async function commitComic() {
   let reload = false;
   let missing = null;
   try {
-    const { data } = await query(`/comics/${state.comicId}/commit`, {
-      source_revision: state.revision,
-    });
+    const { data } = await query(
+      `/comics/${state.comicId}/commit${state.existingComic ? "?allow_override=true" : ""}`,
+      {
+        source_revision: state.revision,
+      },
+    );
     state.result = data;
     state.phase = "success";
+    pending.needsCMRefresh = true;
     announce("漫画录入成功。");
   } catch (error) {
-    if (error.code === "COMIC_ALREADY_EXISTS") state.phase = "already-exists";
-    else if (error.code === "SOURCE_META_CHANGED") reload = true;
+    if (error.code === "COMIC_ALREADY_EXISTS") {
+      state.phase = "already-exists";
+      pending.needsCMRefresh = true;
+    } else if (error.code === "SOURCE_META_CHANGED") reload = true;
     else if (error.code === "UNMAPPED_SPECIFIC_TAGS") {
       missing = error.details.specific_tags || [];
       state.phase = "resolving";
@@ -1542,6 +1953,26 @@ $("comic-id").addEventListener("input", () =>
   $("comic-id").setCustomValidity(""),
 );
 $("archive-refresh").addEventListener("click", () => loadArchives());
+$("pending-refresh").addEventListener("click", () => scanPending());
+$("pending-cancel").addEventListener("click", () =>
+  pending.controller?.abort(),
+);
+for (const [key, label] of Object.entries(PENDING_REASONS))
+  $("pending-reason").append(el("option", { value: key }, label));
+for (const [key, label] of Object.entries({
+  ...DMB_STATUSES,
+  missing_source: "来源缺失",
+}))
+  $("pending-status").append(el("option", { value: key }, label));
+for (const name of ["search", "reason", "status"])
+  $("pending-" + name).addEventListener(
+    name === "search" ? "input" : "change",
+    (event) => {
+      pending[name] = event.target.value;
+      pending.offset = 0;
+      renderPending();
+    },
+  );
 $("queue-search").addEventListener("input", (event) => {
   state.queueSearch = event.target.value;
   renderQueue();
@@ -1575,6 +2006,10 @@ $("settings-form").addEventListener("submit", (event) => {
     if (dirty() && !confirm("更换归档服务会清除当前未保存的选择，是否继续？"))
       return;
     dmbUrl = value;
+    pending.controller?.abort();
+    pending.documents = pending.comics = pending.comparison = null;
+    pending.phase = "idle";
+    pending.needsCMRefresh = false;
     localStorage.setItem("comicmanager.dmbUrl", value);
     for (const item of state.items) item.dirty = false;
     $("settings-dialog").close();

@@ -182,6 +182,9 @@ POST /api/tags/specific
 
 ## 6. Comic commit
 
+从“未完成漫画”列表进入时，如果 CM 中已有对应记录，复核页显示“确认更新漫画”及替换范围，
+确认后使用现有 `allow_override=true` 参数。未入库漫画仍使用默认的新增行为。
+
 ```http
 POST /api/comics/{comic_id}/commit
 {"source_revision": "..."}
@@ -200,9 +203,10 @@ POST /api/comics/{comic_id}/commit
 ## 7. 离开页面
 
 第一版不实现服务端草稿。由于 Tag 写操作是即时保存的，已经建立的映射不会丢失。
-最近归档来自 DMB；本地是否已录入由 commit 的 `COMIC_ALREADY_EXISTS` 响应判断。
-当前没有本地漫画详情读取接口，因此成功页展示本次 commit 返回的 Comic，已存在
-状态不会把 DMB 预览冒充为本地已有漫画。
+最近归档来自 DMB；“未完成漫画”页通过分页读取 CM 库判断本地记录和更新时间。
+从列表进入工作台使用 `#/entry/{id}?from=pending`，返回时保留筛选条件，并在录入或更新后
+重新读取 CM 的持久化时间，再与缓存的 DMB 记录比较。手动重新扫描会刷新两边的全部记录。
+成功页展示本次 commit 返回的 Comic；已存在状态不会把 DMB 预览冒充为本地已有漫画。
 
 如果仍有尚未写入的选择或正在进行的请求，关闭或跳转页面前使用
 `beforeunload` 提示。仅仅存在未映射标签时不弹提示，因为这些状态尚未产生修改。
