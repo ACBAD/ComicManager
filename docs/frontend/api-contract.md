@@ -18,7 +18,7 @@ DMB 使用同步 HTTP 客户端，由应用 lifespan 创建、检查健康状态
 | 标签查询、通用标签的来源标签查询 | ID 数组 |
 | SpecificTag 对应的 GenericTag | 原始 GenericTag |
 | Comic 预览、录入成功 | 原始 Comic |
-| 已入库 Comic 分页读取 | 原始 Comic 数组 |
+| 已入库 Comic 分页读取、检索 | 原始 Comic 数组 |
 
 标签查询结果按 ID 升序，响应体例如 `[17, 23]`。无匹配项时返回 `[]`。
 分页前的匹配总数放在响应头 `X-Total-Count`，不额外包装响应体。
@@ -163,6 +163,41 @@ SpecificTag 必须映射到已有 GenericTag，不提供未映射记录或覆盖
 
 前端可将 Comic 的 id 与 DMB 的 document_id 对应，自行比较两边的 updated_at。
 每次请求的总数、漫画与关联数据来自同一读取快照；多次分页请求不共享快照。
+
+### 检索已入库漫画
+
+`POST /api/comics/query`
+
+```json
+{
+  "generic_tag_ids": [17, 23],
+  "tag_match": "all",
+  "author_name": "Alice",
+  "author_match": "exact",
+  "title": "月光",
+  "title_match": "contains",
+  "limit": 50,
+  "offset": 0
+}
+```
+
+- 标签、作者、标题均可单独使用；同时提供时，漫画必须满足所有类别的条件（AND）。
+- `generic_tag_ids` 是 GenericTag ID 数组，最多 100 项，每项为正的 64 位有符号整数。
+  ID 通过通用标签查询接口取得。查询涵盖映射到该通用标签的所有来源标签，
+  不按 SpecificTag ID 或标签名称筛选；同一本漫画有多个匹配来源标签时也只返回一次。
+- `tag_match` 默认 `all`，要求包含全部指定标签；`any` 表示包含任一标签。
+  重复 ID 不影响结果；省略 `generic_tag_ids` 或传 `[]` 表示不限制标签。
+  不存在或未关联漫画的标签按未匹配处理，不返回 404。
+- `author_name` 匹配任一作者；`author_match` 默认 `exact`，也支持 `prefix`、`contains`。
+- `title` 匹配标题；`title_match` 默认 `contains`，也支持 `exact`、`prefix`。
+  两种文本匹配都区分大小写，`%`、`_` 和反斜杠是普通字符，不支持通配符或正则。
+  文本不自动裁剪；提供时不得为空或纯空白，省略或传 `null` 表示不限制该项。
+- JSON 请求体必填；`{}` 等同于无筛选的列表查询。未知字段或无效参数返回 422 `INVALID_REQUEST`。
+- `limit` 默认 50、范围 1–100；`offset` 默认 0，范围 0 至 2⁶³−1。结果按 ID 升序分页。
+- 响应体为原始 Comic 数组，作者和来源标签保持完整；不只返回命中的关联项，也不附加通用标签。
+  `X-Total-Count` 是满足全部查询条件的漫画总数，统计在分页之前；超出末页仍返回该总数和 `[]`。
+- 与列表接口相同，要求登录但无需创建权限，只读 CM 数据库，不调用 DMB；
+  返回 `Cache-Control: no-store`，总数、漫画与关联数据使用同一读取快照。
 
 ### 预览
 

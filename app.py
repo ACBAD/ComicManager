@@ -319,6 +319,19 @@ def list_comics(
     return result
 
 
+@comics_api.post('/query',
+                 dependencies=[fastapi.Depends(Authoricator())],
+                 name='comics.query_comics')
+def query_comics(
+    payload: api.ComicQuery, response: fastapi.Response, comic_manager: ComicManagerDep,
+) -> list[comics.Comic]:
+    """按通用标签、作者及标题组合检索；返回原始 Comic，匹配总数在 X-Total-Count。"""
+    result, total = comic_manager.query_comics(**payload.model_dump())
+    response.headers['X-Total-Count'] = str(total)
+    response.headers['Cache-Control'] = 'no-store'
+    return result
+
+
 def fetch_comic_source(
     comic_id: int, comic_manager: comics.ComicManager, dmb_client: DMBClient,
 ) -> tuple[comics.Comic, str]:

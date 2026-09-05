@@ -1,4 +1,4 @@
-"""HTTP request and response models for the comic entry workflow."""
+"""HTTP request and response models for comic and tag APIs."""
 
 from typing import Annotated, Any, Literal
 
@@ -65,3 +65,16 @@ class SourceDocument(BaseModel):
 
 class ComicCommitRequest(RequestModel):
     source_revision: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+class ComicQuery(RequestModel):
+    generic_tag_ids: list[Annotated[int, Field(gt=0, le=2**63 - 1)]] = Field(
+        default_factory=list, max_length=100,
+    )
+    tag_match: Literal["all", "any"] = "all"
+    author_name: str | None = Field(default=None, min_length=1, pattern=r"\S")
+    author_match: Literal["exact", "prefix", "contains"] = "exact"
+    title: str | None = Field(default=None, min_length=1, pattern=r"\S")
+    title_match: Literal["exact", "prefix", "contains"] = "contains"
+    limit: int = Field(default=50, ge=1, le=100)
+    offset: int = Field(default=0, ge=0, le=2**63 - 1)

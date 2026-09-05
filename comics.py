@@ -1,9 +1,21 @@
 import pydantic
 import sqlite3
 import tags
-from typing import Sequence
+from typing import Literal, Sequence
 from sites import SourceSite
 from handlers import SITE_HANDLERS
+
+
+def _text_match_sql(column: str, match: Literal["exact", "prefix", "contains"]) -> str:
+    # column 只由内部常量指定；搜索文本通过参数绑定，区分大小写且不解释通配符。
+    if match == "exact":
+        return f"{column} = ?"
+    if match == "prefix":
+        return f"instr({column}, ?) = 1"
+    if match == "contains":
+        return f"instr({column}, ?) > 0"
+    raise ValueError(f"Unsupported text match: {match}")
+
 
 class ComicIDExistsError(Exception):
     """当尝试添加已存在的漫画ID时抛出此异常。"""
@@ -77,17 +89,59 @@ class ComicManager:
 
     def list_comics(self, *, limit: int = 50, offset: int = 0) -> tuple[list[Comic], int]:
         """按 ID 升序分页读取已入库漫画，返回原始模型和分页前总数。"""
+        return self.query_comics(limit=limit, offset=offset)
+
+    def query_comics(
+        self, *, generic_tag_ids: Sequence[int] = (),
+        tag_match: Literal["all", "any"] = "all",
+        author_name: str | None = None,
+        author_match: Literal["exact", "prefix", "contains"] = "exact",
+        title: str | None = None,
+        title_match: Literal["exact", "prefix", "contains"] = "contains",
+        limit: int = 50, offset: int = 0,
+    ) -> tuple[list[Comic], int]:
+        """组合筛选本地漫画，按 ID 升序返回原始模型和筛选后的分页前总数。"""
+        if tag_match not in ("all", "any"):
+            raise ValueError(f"Unsupported tag match: {tag_match}")
+        conditions = []
+        params: list[str | int] = []
+        if title is not None:
+            conditions.append(_text_match_sql("c.title", title_match))
+            params.append(title)
+        if author_name is not None:
+            conditions.append(
+                "EXISTS (SELECT 1 FROM comic_authors ca WHERE ca.comic_id = c.id AND "
+                + _text_match_sql("ca.author_name", author_match) + ")"
+            )
+            params.append(author_name)
+
+        tag_ids = list(dict.fromkeys(generic_tag_ids))
+        if tag_ids:
+            # EXISTS 避免同一本漫画的多个来源标签或作者造成重复行、重复计数。
+            tag_query = (
+                "SELECT 1 FROM comic_tags ct "
+                "JOIN specific_tags st ON st.id = ct.specific_tag_id "
+                "WHERE ct.comic_id = c.id AND "
+            )
+            if tag_match == "all":
+                conditions.extend(f"EXISTS ({tag_query}st.generic_tag_id = ?)" for _ in tag_ids)
+            else:
+                placeholders = ", ".join("?" for _ in tag_ids)
+                conditions.append(f"EXISTS ({tag_query}st.generic_tag_id IN ({placeholders}))")
+            params.extend(tag_ids)
+
+        where = " WHERE " + " AND ".join(conditions) if conditions else ""
         # 总数、漫画字段及关联数据使用同一读取快照；也可嵌套于调用方的事务。
-        self.conn.execute("SAVEPOINT comic_list")
+        self.conn.execute("SAVEPOINT comic_query")
         try:
-            total = self.conn.execute("SELECT COUNT(*) FROM comics").fetchone()[0]
+            total = self.conn.execute(f"SELECT COUNT(*) FROM comics c{where}", params).fetchone()[0]
             rows = self.conn.execute(
-                "SELECT id, title, series_name, volume_number, updated_at FROM comics "
-                "ORDER BY id ASC LIMIT ? OFFSET ?", (limit, offset),
+                "SELECT c.id, c.title, c.series_name, c.volume_number, c.updated_at "
+                f"FROM comics c{where} ORDER BY c.id ASC LIMIT ? OFFSET ?", [*params, limit, offset],
             ).fetchall()
             return [self._comic_from_row(row) for row in rows], total
         finally:
-            self.conn.execute("RELEASE SAVEPOINT comic_list")
+            self.conn.execute("RELEASE SAVEPOINT comic_query")
 
     def _comic_from_row(self, row: tuple) -> Comic:
         comic_id, title, series_name, volume_number, updated_at = row
