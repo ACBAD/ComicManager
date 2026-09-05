@@ -47,14 +47,17 @@ class ComicManager:
 
     def add_comic(self, comic: Comic, allow_override: bool = False) -> None:
         with self.conn:
-            cursor = self.conn.execute("SELECT id FROM comics WHERE id = ?", (comic.id,))
-            if cursor.fetchone():
-                if not allow_override:
-                    raise ComicIDExistsError(comic)
+            if allow_override:
                 self.conn.execute("DELETE FROM comic_tags WHERE comic_id = ?", (comic.id,))
                 self.conn.execute("DELETE FROM comic_authors WHERE comic_id = ?", (comic.id,))
                 self.conn.execute("DELETE FROM comics WHERE id = ?", (comic.id,))
-            self.conn.execute("INSERT INTO comics (id, title, series_name, volume_number) VALUES (?, ?, ?, ?)", (comic.id, comic.title, comic.series_name, comic.volume_number))
+            try:
+                self.conn.execute("INSERT INTO comics (id, title, series_name, volume_number) VALUES (?, ?, ?, ?)", (comic.id, comic.title, comic.series_name, comic.volume_number))
+            except sqlite3.IntegrityError as error:
+                # 由主键约束处理并发录入，避免先查后写的竞争。
+                if error.sqlite_errorcode == sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY:
+                    raise ComicIDExistsError(comic) from error
+                raise
             for author in dict.fromkeys(comic.authors):
                 self.conn.execute("INSERT INTO comic_authors (comic_id, author_name) VALUES (?, ?)", (comic.id, author))
             linked_tag_ids = set()

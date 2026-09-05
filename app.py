@@ -1,9 +1,12 @@
-import asyncio
 import hashlib
 import json
+import os
+from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Annotated
 import fastapi
+from fastapi.concurrency import run_in_threadpool
 from fastapi.encoders import jsonable_encoder
 from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
@@ -27,31 +30,43 @@ comics_api = fastapi.APIRouter(
 tag_router = fastapi.APIRouter(tags=['Tags', 'API'], responses=tag_error_responses) #type: ignore
 site_router = fastapi.APIRouter(tags=['Site', 'API'])
 
-import os
 COMIC_DB_PATH = Path(os.getenv('COMIC_DB_PATH', 'comics.db'))
 
-comic_manager = comics.ComicManager(sqlite3.connect(COMIC_DB_PATH))
-comic_manager.conn.execute("PRAGMA foreign_keys = ON")
+
+def get_comic_manager() -> Iterator[comics.ComicManager]:
+    # 同一个请求的依赖和路由可能运行在不同线程，但连接不跨请求共享。
+    conn = sqlite3.connect(COMIC_DB_PATH, check_same_thread=False, timeout=5.0)
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+        yield comics.ComicManager(conn)
+    finally:
+        conn.close()
+
+
+ComicManagerDep = Annotated[comics.ComicManager, fastapi.Depends(get_comic_manager)]
+
+
+def get_dmb_client(request: fastapi.Request) -> DMBClient:
+    return request.app.state.dmb_client
+
+
+DMBClientDep = Annotated[DMBClient, fastapi.Depends(get_dmb_client)]
 
 app_kwargs = {"docs_url": None, "redoc_url": None, "openapi_url": None}
 
 
 @asynccontextmanager
 async def lifespan(app_instance: fastapi.FastAPI):
-    # 先留着这堆样板, 之后万一还有其他插件需要后台任务, 就可以直接在这里加
-
-    # 如果插件存在，启动插件的后台任务
-    # hitomi_bg_task = None
-    # if hitomi_plugin:
-    #     hitomi_bg_task = asyncio.create_task(hitomi_plugin.refresh_hitomi_loop())
-    yield
-    # 清理任务
-    # if hitomi_bg_task:
-    #     hitomi_bg_task.cancel()
-    #     try:
-    #         await hitomi_bg_task
-    #     except Exception as le:
-    #         logger.error(str(le))
+    dmb_url = os.environ.get('DMB_URL')
+    if dmb_url is None:
+        raise RuntimeError("DMB_URL environment variable is not set. Please set it to the base URL of the DMB API.")
+    with DMBClient(base_url=dmb_url) as client:
+        await run_in_threadpool(client.check_health)
+        app_instance.state.dmb_client = client
+        try:
+            yield
+        finally:
+            del app_instance.state.dmb_client
 
 
 app_kwargs["lifespan"] = lifespan # type: ignore
@@ -184,14 +199,14 @@ specific_tag_router = fastapi.APIRouter(tags=['Tags', 'API', 'SpecificTag'])
 generic_tag_router = fastapi.APIRouter(tags=['Tags', 'API', 'GenericTag'])
 
 
-def require_generic_tag(tag_id: int) -> tags.GenericTag:
+def require_generic_tag(tag_id: int, comic_manager: comics.ComicManager) -> tags.GenericTag:
     tag = comic_manager.tag_manager.get_generic_tag(tag_id)
     if tag is None:
         raise APIError(404, "GENERIC_TAG_NOT_FOUND", "通用标签不存在", generic_tag_id=tag_id)
     return tag
 
 
-def require_specific_tag(tag_id: int) -> tags.SpecificTagUnion:
+def require_specific_tag(tag_id: int, comic_manager: comics.ComicManager) -> tags.SpecificTagUnion:
     tag = comic_manager.tag_manager.get_specific_tag(tag_id)
     if tag is None:
         raise APIError(404, "SPECIFIC_TAG_NOT_FOUND", "来源标签不存在", specific_tag_id=tag_id)
@@ -199,7 +214,9 @@ def require_specific_tag(tag_id: int) -> tags.SpecificTagUnion:
 
 
 @generic_tag_router.post('/query', dependencies=[fastapi.Depends(Authoricator())])
-def query_generic_tags(query: api.GenericTagQuery, response: fastapi.Response) -> list[int]:
+def query_generic_tags(
+    query: api.GenericTagQuery, response: fastapi.Response, comic_manager: ComicManagerDep,
+) -> list[int]:
     ids, total = comic_manager.tag_manager.query_generic_tag_ids(
         query.tag_group, query.name, name_match=query.name_match, limit=query.limit, offset=query.offset,
     )
@@ -209,7 +226,7 @@ def query_generic_tags(query: api.GenericTagQuery, response: fastapi.Response) -
 
 @generic_tag_router.post('', status_code=201,
                          dependencies=[fastapi.Depends(Authoricator([UserAbilities.CREATE_TAG]))])
-def create_generic_tag(payload: tags.GenericTag) -> tags.GenericTag:
+def create_generic_tag(payload: tags.GenericTag, comic_manager: ComicManagerDep) -> tags.GenericTag:
     manager = comic_manager.tag_manager
     try:
         return manager.create_generic_tag(payload.name, payload.tag_group)
@@ -218,25 +235,28 @@ def create_generic_tag(payload: tags.GenericTag) -> tags.GenericTag:
 
 
 @generic_tag_router.get('/{tag_id}', dependencies=[fastapi.Depends(Authoricator())])
-def get_generic_tag(tag_id: int) -> tags.GenericTag:
-    return require_generic_tag(tag_id)
+def get_generic_tag(tag_id: int, comic_manager: ComicManagerDep) -> tags.GenericTag:
+    return require_generic_tag(tag_id, comic_manager)
 
 
 @generic_tag_router.get('/{tag_id}/specifics', dependencies=[fastapi.Depends(Authoricator())])
 def get_generic_tag_specifics(
     tag_id: int,
     response: fastapi.Response,
+    comic_manager: ComicManagerDep,
     limit: int = fastapi.Query(default=50, ge=1, le=100),
     offset: int = fastapi.Query(default=0, ge=0),
 ) -> list[int]:
-    require_generic_tag(tag_id)
+    require_generic_tag(tag_id, comic_manager)
     ids, total = comic_manager.tag_manager.get_generic_tag_specific_ids(tag_id, limit=limit, offset=offset)
     response.headers['X-Total-Count'] = str(total)
     return ids
 
 
 @specific_tag_router.post('/query', dependencies=[fastapi.Depends(Authoricator())])
-def query_specific_tags(query: api.SpecificTagQuery, response: fastapi.Response) -> list[int]:
+def query_specific_tags(
+    query: api.SpecificTagQuery, response: fastapi.Response, comic_manager: ComicManagerDep,
+) -> list[int]:
     manager = comic_manager.tag_manager
     if isinstance(query, api.SpecificTagExactQuery):
         tag = query.specific_tag
@@ -252,9 +272,11 @@ def query_specific_tags(query: api.SpecificTagQuery, response: fastapi.Response)
 
 @specific_tag_router.post('', status_code=201,
                           dependencies=[fastapi.Depends(Authoricator([UserAbilities.CREATE_TAG]))])
-def create_specific_tag(payload: api.SpecificTagCreate, response: fastapi.Response) -> tags.SpecificTagUnion:
+def create_specific_tag(
+    payload: api.SpecificTagCreate, response: fastapi.Response, comic_manager: ComicManagerDep,
+) -> tags.SpecificTagUnion:
     manager = comic_manager.tag_manager
-    generic = require_generic_tag(payload.generic_tag_id)
+    generic = require_generic_tag(payload.generic_tag_id, comic_manager)
     try:
         manager.create_specific_tag(payload.specific_tag, generic)
     except tags.SpecificTagExistsError:
@@ -268,28 +290,23 @@ def create_specific_tag(payload: api.SpecificTagCreate, response: fastapi.Respon
 @specific_tag_router.get('/{tag_id}', 
                          dependencies=[fastapi.Depends(Authoricator())], 
                          name='tags.get_specific_tag')
-def get_specific_tag(tag_id: int) -> tags.SpecificTagUnion:
-    return require_specific_tag(tag_id)
+def get_specific_tag(tag_id: int, comic_manager: ComicManagerDep) -> tags.SpecificTagUnion:
+    return require_specific_tag(tag_id, comic_manager)
 
 @specific_tag_router.get('/{tag_id}/generic', 
                          dependencies=[fastapi.Depends(Authoricator())], 
                          name='tags.get_mapped_generic_tag')
-def get_mapped_generic_tag(tag_id: int) -> tags.GenericTag:
-    return comic_manager.tag_manager.generalize(require_specific_tag(tag_id))
+def get_mapped_generic_tag(tag_id: int, comic_manager: ComicManagerDep) -> tags.GenericTag:
+    return comic_manager.tag_manager.generalize(require_specific_tag(tag_id, comic_manager))
 
 tag_router.include_router(specific_tag_router, prefix='/specific')
 tag_router.include_router(generic_tag_router, prefix='/generic')
 
-dmb_url = os.environ.get('DMB_URL', None)  # Replace with the actual base URL of the DMB API
-if dmb_url is None:
-    raise RuntimeError("DMB_URL environment variable is not set. Please set it to the base URL of the DMB API.")
-httpx.get(f'{dmb_url}/healthz', timeout=20).raise_for_status()  # Test the connection to the DMB API
-dmb_client = DMBClient(base_url=dmb_url)  # Replace with the actual base URL of the DMB API
-
-
-def fetch_comic_source(comic_id: int) -> tuple[comics.Comic, str]:
+def fetch_comic_source(
+    comic_id: int, comic_manager: comics.ComicManager, dmb_client: DMBClient,
+) -> tuple[comics.Comic, str]:
     try:
-        comic_data = asyncio.run(dmb_client.fetch_comic_info(str(comic_id)))
+        comic_data = dmb_client.fetch_comic_info(str(comic_id))
     except httpx.HTTPStatusError as error:
         if error.response.status_code == 404:
             raise APIError(404, "SOURCE_DOCUMENT_NOT_FOUND", "DMB 归档记录不存在", comic_id=comic_id) from error
@@ -319,8 +336,11 @@ def fetch_comic_source(comic_id: int) -> tuple[comics.Comic, str]:
 @comics_api.get('/{comic_id}/preview',
                 dependencies=[fastapi.Depends(Authoricator())],
                 name='comics.get_comic_preview')
-def get_comic_preview(comic_id: int, response: fastapi.Response) -> comics.Comic:
-    comic, revision = fetch_comic_source(comic_id)
+def get_comic_preview(
+    comic_id: int, response: fastapi.Response,
+    comic_manager: ComicManagerDep, dmb_client: DMBClientDep,
+) -> comics.Comic:
+    comic, revision = fetch_comic_source(comic_id, comic_manager, dmb_client)
     response.headers['Cache-Control'] = 'no-store'
     response.headers['ETag'] = f'"{revision}"'
     return comic
@@ -330,9 +350,10 @@ def get_comic_preview(comic_id: int, response: fastapi.Response) -> comics.Comic
                  dependencies=[fastapi.Depends(Authoricator([UserAbilities.CREATE_DOCUMENT]))],
                  name='comics.commit_comic')
 def commit_comic(
-    comic_id: int, payload: api.ComicCommitRequest, allow_override: bool = False,
+    comic_id: int, payload: api.ComicCommitRequest,
+    comic_manager: ComicManagerDep, dmb_client: DMBClientDep, allow_override: bool = False,
 ) -> comics.Comic:
-    comic, revision = fetch_comic_source(comic_id)
+    comic, revision = fetch_comic_source(comic_id, comic_manager, dmb_client)
     if revision != payload.source_revision:
         raise APIError(409, "SOURCE_META_CHANGED", "来源 metadata 已变化，请重新预览", source_revision=revision)
     missing = comic_manager.get_missing_tags(comic)
