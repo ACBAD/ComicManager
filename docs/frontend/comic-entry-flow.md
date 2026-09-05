@@ -27,10 +27,10 @@ flowchart TD
 
 ## 1. 进入页面
 
-推荐前端页面路由：
+当前前端页面路由（沿用已有页面入口，不新增后端页面路由）：
 
 ```text
-/comics/{comic_id}/entry
+/exploror#/entry/{comic_id}
 ```
 
 页面加载后并行执行：
@@ -192,7 +192,7 @@ POST /api/comics/{comic_id}/commit
 响应处理：
 
 - `201`：显示成功页。
-- `COMIC_ALREADY_EXISTS`：显示“查看已有漫画”。
+- `COMIC_ALREADY_EXISTS`：显示已录入状态、返回入口及来源数据，不自动覆盖。
 - `UNMAPPED_SPECIFIC_TAGS`：用响应中的缺失列表刷新状态，回到工作台。
 - `SOURCE_META_CHANGED`：丢弃当前 preview，完整重新加载。
 - 其他错误：保留当前页面状态，显示可重试错误。
@@ -200,6 +200,9 @@ POST /api/comics/{comic_id}/commit
 ## 7. 离开页面
 
 第一版不实现服务端草稿。由于 Tag 写操作是即时保存的，已经建立的映射不会丢失。
+最近归档来自 DMB；本地是否已录入由 commit 的 `COMIC_ALREADY_EXISTS` 响应判断。
+当前没有本地漫画详情读取接口，因此成功页展示本次 commit 返回的 Comic，已存在
+状态不会把 DMB 预览冒充为本地已有漫画。
 
 如果仍有尚未写入的选择或正在进行的请求，关闭或跳转页面前使用
 `beforeunload` 提示。仅仅存在未映射标签时不弹提示，因为这些状态尚未产生修改。

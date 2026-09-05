@@ -5,6 +5,40 @@
 
 最后更新：2026-09-05。
 
+## 当前实现与运行
+
+- 首页：`/exploror#/`，支持输入 DMB 文档 ID 和浏览最近归档。
+- 录入工作台：`/exploror#/entry/{comic_id}`。
+- 通用标签管理：`/exploror#/tags`，支持分类搜索、新建标签、查看来源映射及分页。
+- 页面沿用现有 `/exploror` 和 `/src/{filename}` 路由，未增加后端接口。
+- 使用原生 JavaScript 模块与本地 Bootstrap 5.3.8 资源，无前端构建步骤。
+- 默认 DMB 地址为 `https://dmb.khadas.hayaseyuuka.date:8880`，浏览器只以 `viewer`
+  读取归档。连接设置只改变浏览器的 DMB 地址；应与后端 `DMB_URL` 保持一致。
+- 本地联调使用 `http://localhost:8000`。该 Origin 在当前 DMB CORS 白名单中；
+  `http://127.0.0.1:8000` 与其他端口是不同的 Origin。
+
+临时库启动示例（在项目根目录运行）：
+
+```sh
+comic_test_dir=$(mktemp -d)
+export COMIC_DB_PATH="$comic_test_dir/comics.db"
+export DMB_URL='https://dmb.khadas.hayaseyuuka.date:8880'
+.venv/bin/python - <<'PY'
+import os, sqlite3
+from contextlib import closing
+from pathlib import Path
+with closing(sqlite3.connect(os.environ['COMIC_DB_PATH'])) as conn:
+    conn.executescript(Path('comic.sql').read_text())
+PY
+.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
+```
+
+前端回归测试：`node --test tests/frontend.test.mjs`。不要直接执行根目录旧的
+`test_comics.py` / `test_tags.py` 做自动测试，它们包含对真实数据库的录入操作。
+
+Bootstrap 文件保留上游 MIT 许可证头，来自
+[官方 5.3 下载说明](https://getbootstrap.com/docs/5.3/getting-started/download/)，下载时已校验官方 SHA-384。
+
 ## 阅读顺序
 
 1. [API 对接约定](api-contract.md)

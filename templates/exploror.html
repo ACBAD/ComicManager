@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>漫画录入 · ComicManager</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23395349'/%3E%3Cpath d='M9 8h6v16H9zm9 0h5v16h-5z' fill='%23fff'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/src/bootstrap.min.css" />
+    <link rel="stylesheet" href="/src/manager.css" />
+    <script src="/src/bootstrap.bundle.min.js" defer></script>
+    <script src="/src/manager.js" type="module"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳转到主要内容</a>
+    <header class="app-header">
+      <a class="brand" href="#/" aria-label="ComicManager 首页">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span>Comic<span class="brand-light">Manager</span></span>
+      </a>
+      <nav class="main-nav" aria-label="主导航">
+        <a id="nav-entry" href="#/" aria-current="page">漫画录入</a>
+        <a id="nav-tags" href="#/tags">标签管理</a>
+      </nav>
+      <div class="header-actions">
+        <span class="service-label" id="service-state"
+          ><span class="status-dot"></span> DMB 归档</span
+        >
+        <button
+          class="btn btn-sm btn-outline-secondary"
+          id="settings-open"
+          type="button"
+        >
+          连接设置
+        </button>
+      </div>
+    </header>
+
+    <main id="main" class="app-main">
+      <div id="global-message" aria-live="polite"></div>
+      <section id="home-page" class="home-page">
+        <form id="entry-form" class="entry-form">
+          <label for="comic-id" class="form-label">DMB 文档 ID</label>
+          <div class="entry-input-row">
+            <span class="input-prefix" aria-hidden="true">#</span>
+            <input
+              class="form-control"
+              id="comic-id"
+              inputmode="numeric"
+              pattern="[0-9]+"
+              required
+              placeholder="输入归档文档 ID"
+              autocomplete="off"
+              aria-describedby="entry-hint"
+            />
+            <button class="btn btn-primary" type="submit">
+              读取归档 <span aria-hidden="true">→</span>
+            </button>
+          </div>
+          <p class="form-text" id="entry-hint">
+            使用 DMB 的文档 ID，进入预览后逐一确认标签映射。
+          </p>
+        </form>
+        <section class="archive-section" aria-labelledby="archive-heading">
+          <div class="section-heading">
+            <div>
+              <h2 id="archive-heading">最近归档</h2>
+              <p>从归档服务选择一部漫画开始整理</p>
+            </div>
+            <button
+              class="btn btn-sm btn-quiet"
+              id="archive-refresh"
+              type="button"
+            >
+              刷新列表 ↻
+            </button>
+          </div>
+          <div id="archive-list" aria-live="polite"></div>
+          <div class="pagination-bar" id="archive-pagination"></div>
+        </section>
+      </section>
+
+      <section
+        id="loading-page"
+        class="loading-page"
+        hidden
+        aria-live="polite"
+        aria-busy="true"
+      >
+        <span
+          class="spinner-border spinner-border-sm"
+          aria-hidden="true"
+        ></span>
+        <h1>正在读取归档</h1>
+        <p>获取漫画信息和标签，请稍候。</p>
+        <div class="skeleton wide"></div>
+        <div class="skeleton"></div>
+        <div class="skeleton short"></div>
+      </section>
+
+      <section id="entry-page" hidden>
+        <div class="entry-topline">
+          <a href="#/" class="back-link">← 返回录入</a>
+          <div class="step-indicator">
+            <span class="complete">✓ 读取归档</span><i>—</i
+            ><span id="step-tags">02 整理标签</span><i>—</i
+            ><span id="step-review">03 确认录入</span>
+          </div>
+        </div>
+        <div id="comic-summary" class="comic-summary"></div>
+        <div id="workspace" class="workspace">
+          <aside
+            class="queue-panel offcanvas-md offcanvas-start"
+            tabindex="-1"
+            id="tag-queue"
+            aria-labelledby="queue-heading"
+          >
+            <div class="offcanvas-header">
+              <h2 class="offcanvas-title">标签队列</h2>
+              <button
+                type="button"
+                class="btn-close"
+                data-bs-dismiss="offcanvas"
+                data-bs-target="#tag-queue"
+                aria-label="关闭队列"
+              ></button>
+            </div>
+            <div class="queue-heading">
+              <h2 id="queue-heading">
+                标签队列 <span id="queue-count"></span>
+              </h2>
+              <small>逐项确认来源标签的归属</small>
+            </div>
+            <div class="queue-controls">
+              <label for="queue-search" class="form-label">搜索标签</label>
+              <input
+                id="queue-search"
+                class="form-control form-control-sm"
+                type="search"
+                placeholder="按原名筛选"
+              />
+              <div class="queue-filter-row">
+                <div>
+                  <label for="queue-status" class="form-label">处理状态</label
+                  ><select id="queue-status" class="form-select form-select-sm">
+                    <option value="all">全部状态</option>
+                    <option value="pending">仅待处理</option>
+                    <option value="resolved">已映射</option>
+                    <option value="recommended">有推荐</option>
+                    <option value="error">请求失败</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="queue-group" class="form-label">来源分组</label
+                  ><select id="queue-group" class="form-select form-select-sm">
+                    <option value="all">全部分组</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div
+              id="queue-list"
+              class="queue-list list-group list-group-flush"
+              aria-label="来源标签"
+            ></div>
+          </aside>
+          <div class="editor-panel">
+            <button
+              class="btn btn-sm btn-outline-secondary mobile-queue-button"
+              type="button"
+              data-bs-toggle="offcanvas"
+              data-bs-target="#tag-queue"
+              aria-controls="tag-queue"
+            >
+              ☰ 打开标签队列
+            </button>
+            <div id="tag-editor"></div>
+          </div>
+        </div>
+        <div id="review-panel" class="review-panel" hidden></div>
+        <div id="result-panel" class="result-panel" hidden></div>
+        <footer class="entry-footer" id="entry-footer">
+          <button id="metadata-open" class="btn btn-quiet" type="button">
+            { } 查看来源数据
+          </button>
+          <div class="footer-actions">
+            <span id="footer-hint" aria-live="polite"></span
+            ><button
+              id="review-button"
+              class="btn btn-primary"
+              type="button"
+              disabled
+            >
+              复核并录入 →
+            </button>
+          </div>
+        </footer>
+      </section>
+
+      <section id="tags-page" class="tags-page" hidden>
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">TAG LIBRARY</div>
+            <h1>标签管理</h1>
+            <p>管理通用标签，查看来自不同站点的映射。</p>
+          </div>
+          <button
+            id="library-create-open"
+            type="button"
+            class="btn btn-primary"
+          >
+            ＋ 新建通用标签
+          </button>
+        </div>
+        <form id="library-form" class="library-filters">
+          <div>
+            <label for="library-group" class="form-label">标签分类</label
+            ><select id="library-group" class="form-select" required></select>
+          </div>
+          <div class="library-search">
+            <label for="library-search" class="form-label">标签名称</label
+            ><input
+              id="library-search"
+              class="form-control"
+              type="search"
+              placeholder="在当前分类中搜索"
+            />
+          </div>
+          <button class="btn btn-outline-primary" type="submit">查询</button>
+        </form>
+        <div id="library-results" aria-live="polite"></div>
+        <div id="library-pagination" class="pagination-bar"></div>
+        <div id="library-detail" class="library-detail" hidden></div>
+      </section>
+      <noscript
+        ><p class="alert alert-warning">
+          请启用 JavaScript 以使用漫画录入和标签管理。
+        </p></noscript
+      >
+    </main>
+    <div
+      id="announcer"
+      class="visually-hidden"
+      role="status"
+      aria-live="polite"
+    ></div>
+
+    <dialog id="settings-dialog" class="settings-dialog">
+      <form id="settings-form">
+        <div class="section-heading">
+          <h2>连接设置</h2>
+          <button
+            class="btn-close"
+            type="button"
+            data-close-dialog
+            aria-label="关闭设置"
+          ></button>
+        </div>
+        <label for="dmb-url" class="form-label">DMB 归档服务地址</label
+        ><input
+          id="dmb-url"
+          class="form-control"
+          type="url"
+          required
+          aria-describedby="dmb-url-hint"
+        />
+        <p id="dmb-url-hint" class="form-text">
+          用于读取归档列表与来源数据。请与 ComicManager 后端的 DMB
+          地址保持一致。
+        </p>
+        <div class="connection-note">
+          以 viewer 身份读取归档；标签与漫画录入保存到 ComicManager。
+        </div>
+        <div id="settings-error" class="text-danger" role="alert"></div>
+        <div class="dialog-actions">
+          <a class="btn btn-quiet" href="/auth">ComicManager 身份验证</a
+          ><button class="btn btn-primary" type="submit">保存设置</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="metadata-dialog" class="metadata-dialog">
+      <div class="section-heading">
+        <div>
+          <h2>来源数据</h2>
+          <p>归档记录与当前预览的原始数据</p>
+        </div>
+        <button
+          class="btn-close"
+          type="button"
+          data-close-dialog
+          aria-label="关闭来源数据"
+        ></button>
+      </div>
+      <div id="metadata-content"></div>
+    </dialog>
+    <dialog id="new-tag-dialog" class="settings-dialog">
+      <form id="new-tag-form">
+        <div class="section-heading">
+          <h2>新建通用标签</h2>
+          <button
+            class="btn-close"
+            type="button"
+            data-close-dialog
+            aria-label="关闭新建标签"
+          ></button>
+        </div>
+        <label for="new-tag-group" class="form-label">标签分类</label
+        ><select id="new-tag-group" class="form-select" required></select
+        ><label for="new-tag-name" class="form-label mt-3">标签名称</label
+        ><input
+          id="new-tag-name"
+          class="form-control"
+          required
+          autocomplete="off"
+        />
+        <p id="new-tag-error" class="text-danger mt-3" role="alert"></p>
+        <div class="dialog-actions">
+          <button class="btn btn-primary" type="submit">创建标签</button>
+        </div>
+      </form>
+    </dialog>
+  </body>
+</html>
