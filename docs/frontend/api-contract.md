@@ -18,6 +18,7 @@ DMB 使用同步 HTTP 客户端，由应用 lifespan 创建、检查健康状态
 | 标签查询、通用标签的来源标签查询 | ID 数组 |
 | SpecificTag 对应的 GenericTag | 原始 GenericTag |
 | Comic 预览、录入成功 | 原始 Comic |
+| 已入库 Comic 分页读取 | 原始 Comic 数组 |
 
 标签查询结果按 ID 升序，响应体例如 `[17, 23]`。无匹配项时返回 `[]`。
 分页前的匹配总数放在响应头 `X-Total-Count`，不额外包装响应体。
@@ -149,6 +150,19 @@ SpecificTag 必须映射到已有 GenericTag，不提供未映射记录或覆盖
 - 需要该 GenericTag 的 ID 时，使用其 tag_group 和 name 精确查询。
 
 ## Comic
+
+### 已入库漫画列表
+
+`GET /api/comics?limit=50&offset=0`
+
+- 直接读取 CM 数据库，返回原始 Comic 数组，按 ID 升序排列。
+- limit 默认 50、范围 1–100；offset 默认 0 且不得为负数。
+- 响应头 `X-Total-Count` 为库中漫画总数；空库或 offset 超出范围时返回 `[]`。
+- `updated_at` 是 CM 库中存储的更新时间，原样返回；作者和来源标签也取自本地关联。
+- 要求登录，无需创建权限；不调用 DMB，不写入数据，响应包含 `Cache-Control: no-store`。
+
+前端可将 Comic 的 id 与 DMB 的 document_id 对应，自行比较两边的 updated_at。
+每次请求的总数、漫画与关联数据来自同一读取快照；多次分页请求不共享快照。
 
 ### 预览
 

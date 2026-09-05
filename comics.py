@@ -73,6 +73,23 @@ class ComicManager:
         row = cursor.fetchone()
         if row is None:
             return None
+        return self._comic_from_row(row)
+
+    def list_comics(self, *, limit: int = 50, offset: int = 0) -> tuple[list[Comic], int]:
+        """按 ID 升序分页读取已入库漫画，返回原始模型和分页前总数。"""
+        # 总数、漫画字段及关联数据使用同一读取快照；也可嵌套于调用方的事务。
+        self.conn.execute("SAVEPOINT comic_list")
+        try:
+            total = self.conn.execute("SELECT COUNT(*) FROM comics").fetchone()[0]
+            rows = self.conn.execute(
+                "SELECT id, title, series_name, volume_number, updated_at FROM comics "
+                "ORDER BY id ASC LIMIT ? OFFSET ?", (limit, offset),
+            ).fetchall()
+            return [self._comic_from_row(row) for row in rows], total
+        finally:
+            self.conn.execute("RELEASE SAVEPOINT comic_list")
+
+    def _comic_from_row(self, row: tuple) -> Comic:
         comic_id, title, series_name, volume_number, updated_at = row
         cursor = self.conn.execute("SELECT author_name FROM comic_authors WHERE comic_id = ?", (comic_id,))
         authors = [row[0] for row in cursor.fetchall()]

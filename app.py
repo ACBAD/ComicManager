@@ -302,6 +302,23 @@ def get_mapped_generic_tag(tag_id: int, comic_manager: ComicManagerDep) -> tags.
 tag_router.include_router(specific_tag_router, prefix='/specific')
 tag_router.include_router(generic_tag_router, prefix='/generic')
 
+
+@comics_api.get('',
+                dependencies=[fastapi.Depends(Authoricator())],
+                name='comics.list_comics')
+def list_comics(
+    response: fastapi.Response,
+    comic_manager: ComicManagerDep,
+    limit: int = fastapi.Query(default=50, ge=1, le=100),
+    offset: int = fastapi.Query(default=0, ge=0),
+) -> list[comics.Comic]:
+    """按 ID 升序读取 CM 库中的原始 Comic；总数通过 X-Total-Count 返回。"""
+    result, total = comic_manager.list_comics(limit=limit, offset=offset)
+    response.headers['X-Total-Count'] = str(total)
+    response.headers['Cache-Control'] = 'no-store'
+    return result
+
+
 def fetch_comic_source(
     comic_id: int, comic_manager: comics.ComicManager, dmb_client: DMBClient,
 ) -> tuple[comics.Comic, str]:
