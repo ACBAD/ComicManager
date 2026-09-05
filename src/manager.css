@@ -104,6 +104,8 @@ small,
   --bs-btn-border-color: #acc0ad;
   --bs-btn-hover-bg: var(--accent);
   --bs-btn-hover-border-color: var(--accent);
+  --bs-btn-active-bg: var(--accent);
+  --bs-btn-active-border-color: var(--accent);
 }
 .btn-outline-secondary {
   --bs-btn-color: #526157;

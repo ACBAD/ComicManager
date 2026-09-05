@@ -4,15 +4,16 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light" />
-    <title>漫画录入 · ComicManager</title>
+    <title>漫画库 · ComicManager</title>
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23395349'/%3E%3Cpath d='M9 8h6v16H9zm9 0h5v16h-5z' fill='%23fff'/%3E%3C/svg%3E"
     />
     <link rel="stylesheet" href="/src/bootstrap.min.css" />
-    <link rel="stylesheet" href="/src/manager.css" />
+    <link rel="stylesheet" href="/src/manager.css?v=image-route-1" />
+    <link rel="stylesheet" href="/src/library.css?v=full-preload-1" />
     <script src="/src/bootstrap.bundle.min.js" defer></script>
-    <script src="/src/manager.js" type="module"></script>
+    <script src="/src/manager.js?v=full-preload-1" type="module"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">跳转到主要内容</a>
@@ -22,7 +23,8 @@
         <span>Comic<span class="brand-light">Manager</span></span>
       </a>
       <nav class="main-nav" aria-label="主导航">
-        <a id="nav-entry" href="#/" aria-current="page">漫画录入</a>
+        <a id="nav-browse" href="#/" aria-current="page">漫画库</a>
+        <a id="nav-entry" href="#/entry">漫画录入</a>
         <a id="nav-pending" href="#/pending">未完成漫画</a>
         <a id="nav-tags" href="#/tags">标签管理</a>
       </nav>
@@ -42,7 +44,140 @@
 
     <main id="main" class="app-main">
       <div id="global-message" aria-live="polite"></div>
-      <section id="home-page" class="home-page">
+      <section
+        id="browse-page"
+        class="browse-page"
+        aria-labelledby="browse-heading"
+      >
+        <div class="section-heading browse-heading">
+          <h1 id="browse-heading">漫画库</h1>
+          <button
+            id="browse-refresh"
+            class="btn btn-sm btn-quiet"
+            type="button"
+          >
+            刷新 ↻
+          </button>
+        </div>
+        <form id="browse-form" class="browse-form">
+          <div class="browse-text-fields">
+            <div class="browse-title-field">
+              <label for="browse-title" class="form-label">标题</label>
+              <div class="browse-input-pair">
+                <input
+                  id="browse-title"
+                  class="form-control"
+                  type="search"
+                  placeholder="搜索漫画标题"
+                />
+                <select
+                  id="browse-title-match"
+                  class="form-select"
+                  aria-label="标题匹配方式"
+                >
+                  <option value="contains">包含</option>
+                  <option value="exact">精确</option>
+                  <option value="prefix">前缀</option>
+                </select>
+              </div>
+            </div>
+            <div class="browse-author-field">
+              <label for="browse-author" class="form-label">作者</label>
+              <div class="browse-input-pair">
+                <input
+                  id="browse-author"
+                  class="form-control"
+                  type="search"
+                  placeholder="搜索作者"
+                />
+                <select
+                  id="browse-author-match"
+                  class="form-select"
+                  aria-label="作者匹配方式"
+                >
+                  <option value="exact">精确</option>
+                  <option value="contains">包含</option>
+                  <option value="prefix">前缀</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="browse-tag-row">
+            <div class="browse-tag-field">
+              <label for="browse-tag-input" class="form-label">标签</label>
+              <div id="browse-tag-box" class="browse-tag-box">
+                <div
+                  id="browse-selected-tags"
+                  class="browse-selected-tags"
+                ></div>
+                <input
+                  id="browse-tag-input"
+                  type="text"
+                  placeholder="输入文字，选择标签后继续添加…"
+                  autocomplete="off"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-expanded="false"
+                  aria-controls="browse-tag-suggestions"
+                  aria-describedby="browse-tag-hint"
+                />
+              </div>
+              <div id="browse-tag-popup" class="browse-tag-popup" hidden>
+                <div
+                  id="browse-tag-suggestions"
+                  role="listbox"
+                  aria-label="匹配的标签"
+                ></div>
+                <div
+                  id="browse-tag-hint"
+                  class="browse-tag-hint"
+                  role="status"
+                ></div>
+              </div>
+            </div>
+            <div id="browse-tag-mode">
+              <label for="browse-tag-match" class="form-label">多个标签</label
+              ><select id="browse-tag-match" class="form-select">
+                <option value="all">全部满足</option>
+                <option value="any">任一满足</option>
+              </select>
+            </div>
+            <div class="browse-search-actions">
+              <button class="btn btn-primary" type="submit">检索</button>
+              <button id="browse-reset" class="btn btn-quiet" type="button">
+                清除筛选
+              </button>
+            </div>
+          </div>
+        </form>
+        <div
+          id="browse-active-filters"
+          class="browse-active-filters"
+          aria-label="当前筛选条件"
+        ></div>
+        <div
+          id="browse-pagination-top"
+          class="pagination-bar browse-pagination"
+        ></div>
+        <div
+          id="browse-results"
+          class="browse-results"
+          aria-live="polite"
+        ></div>
+        <div
+          id="browse-pagination-bottom"
+          class="pagination-bar browse-pagination"
+        ></div>
+      </section>
+
+      <section
+        id="reader-page"
+        class="reader-page"
+        hidden
+        aria-label="漫画阅读"
+      ></section>
+
+      <section id="home-page" class="home-page" hidden>
         <form id="entry-form" class="entry-form">
           <label for="comic-id" class="form-label">DMB 文档 ID</label>
           <div class="entry-input-row">
@@ -171,7 +306,7 @@
 
       <section id="entry-page" hidden>
         <div class="entry-topline">
-          <a id="entry-back" href="#/" class="back-link">← 返回录入</a>
+          <a id="entry-back" href="#/entry" class="back-link">← 返回录入</a>
           <div class="step-indicator">
             <span class="complete">✓ 读取归档</span><i>—</i
             ><span id="step-tags">02 整理标签</span><i>—</i
@@ -305,7 +440,7 @@
       </section>
       <noscript
         ><p class="alert alert-warning">
-          请启用 JavaScript 以使用漫画录入和标签管理。
+          请启用 JavaScript 以浏览、检索和管理漫画。
         </p></noscript
       >
     </main>
@@ -339,6 +474,35 @@
           用于读取归档列表与来源数据。请与 ComicManager 后端的 DMB
           地址保持一致。
         </p>
+        <fieldset class="mt-4" aria-describedby="image-route-hint">
+          <legend class="form-label">图片线路</legend>
+          <div class="btn-group w-100">
+            <input
+              id="image-route-proxy"
+              class="btn-check"
+              type="radio"
+              name="image-route"
+              value="proxy"
+              checked
+            />
+            <label class="btn btn-outline-primary" for="image-route-proxy"
+              >代理</label
+            >
+            <input
+              id="image-route-direct"
+              class="btn-check"
+              type="radio"
+              name="image-route"
+              value="direct"
+            />
+            <label class="btn btn-outline-primary" for="image-route-direct"
+              >8880 直连</label
+            >
+          </div>
+          <p id="image-route-hint" class="form-text mt-2">
+            用于漫画封面和阅读页面，保存后立即生效并记住选择。
+          </p>
+        </fieldset>
         <div class="connection-note">
           以 viewer 身份读取归档；标签与漫画录入保存到 ComicManager。
         </div>

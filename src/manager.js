@@ -26,6 +26,9 @@ import {
   compareLibraries,
   filterPending,
 } from "./pending-comics.js";
+import { createLibraryPage } from "./library-page.js";
+import { createComicReader } from "./comic-reader.js?v=full-preload-1";
+import { libraryReturn } from "./comic-library.js";
 
 const $ = (id) => document.getElementById(id);
 const groupLabel = (group) => `${GROUP_NAMES[group] || group} · ${group}`;
@@ -38,7 +41,7 @@ const statusLabels = {
   error: "请求失败",
 };
 const state = {
-  view: "home",
+  view: "browse",
   phase: "idle",
   hash: null,
   groups: [],
@@ -56,7 +59,9 @@ const state = {
   queueStatus: "all",
   queueGroup: "all",
   archiveOffset: 0,
-  entryReturn: "#/",
+  entryReturn: "#/entry",
+  entryFromLibrary: false,
+  lastLibraryHash: "#/",
   existingComic: null,
 };
 const pending = {
@@ -73,6 +78,13 @@ const pending = {
   status: "all",
 };
 let dmbUrl = DEFAULT_DMB_URL;
+let imageRoute = "proxy";
+try {
+  if (localStorage.getItem("comicmanager.imageRoute") === "direct")
+    imageRoute = "direct";
+} catch {
+  /* 使用签发原地址 */
+}
 try {
   dmbUrl = validateDmbUrl(
     localStorage.getItem("comicmanager.dmbUrl") || DEFAULT_DMB_URL,
@@ -218,10 +230,22 @@ const canCommit = () =>
 
 function showPage(view) {
   state.view = view;
-  for (const name of ["home", "entry", "loading", "tags", "pending"])
+  for (const name of [
+    "browse",
+    "reader",
+    "home",
+    "entry",
+    "loading",
+    "tags",
+    "pending",
+  ])
     $(name + "-page").hidden = name !== view;
-  const activeNav = view === "tags" || view === "pending" ? view : "entry";
-  for (const name of ["entry", "tags", "pending"]) {
+  const activeNav = ["browse", "reader"].includes(view)
+    ? "browse"
+    : view === "tags" || view === "pending"
+      ? view
+      : "entry";
+  for (const name of ["browse", "entry", "tags", "pending"]) {
     if (name === activeNav)
       $("nav-" + name).setAttribute("aria-current", "page");
     else $("nav-" + name).removeAttribute("aria-current");
@@ -246,6 +270,7 @@ async function route() {
   }
   state.hash = hash;
   pageController.abort();
+  reader.stop();
   pending.controller?.abort();
   pageController = new AbortController();
   searchController?.abort();
@@ -257,15 +282,41 @@ async function route() {
   state.items = [];
   state.preview = null;
   state.existingComic = null;
-  state.entryReturn = "#/";
+  state.entryReturn = "#/entry";
+  state.entryFromLibrary = false;
   state.phase = "idle";
   renderMessage();
-  const match = hash.match(/^#\/entry\/(\d+)(\?from=pending)?$/);
-  if (match && Number.isSafeInteger(Number(match[1]))) {
-    state.entryReturn = match[2] ? "#/pending" : "#/";
+  const match = hash.match(/^#\/entry\/(\d+)(?:\?(.*))?$/);
+  const readMatch = hash.match(/^#\/read\/(\d+)(?:\?(.*))?$/);
+  if (match && Number.isSafeInteger(Number(match[1])) && Number(match[1]) > 0) {
+    const params = new URLSearchParams(match[2] || "");
+    state.entryFromLibrary = params.get("from") === "library";
+    state.entryReturn =
+      params.get("from") === "pending"
+        ? "#/pending"
+        : state.entryFromLibrary
+          ? libraryReturn(params.get("back") || state.lastLibraryHash)
+          : "#/entry";
     $("entry-back").href = state.entryReturn;
-    $("entry-back").textContent = match[2] ? "← 返回未完成列表" : "← 返回录入";
+    $("entry-back").textContent =
+      state.entryReturn === "#/pending"
+        ? "← 返回未完成列表"
+        : state.entryFromLibrary
+          ? "← 返回漫画库"
+          : "← 返回录入";
     await loadEntry(Number(match[1]), version);
+  } else if (
+    readMatch &&
+    Number.isSafeInteger(Number(readMatch[1])) &&
+    Number(readMatch[1]) > 0
+  ) {
+    document.title = "漫画阅读 · ComicManager";
+    showPage("reader");
+    await reader.show(
+      Number(readMatch[1]),
+      new URLSearchParams(readMatch[2] || ""),
+      pageController.signal,
+    );
   } else if (hash === "#/pending") {
     document.title = "未完成漫画 · ComicManager";
     showPage("pending");
@@ -283,15 +334,23 @@ async function route() {
       if (version === routeVersion)
         message(error.message, "danger", error, route);
     }
-  } else {
+  } else if (hash === "#/entry") {
     document.title = "漫画录入 · ComicManager";
     showPage("home");
     await loadArchives();
+  } else {
+    document.title = "漫画库 · ComicManager";
+    showPage("browse");
+    window.scrollTo({ top: 0 });
+    state.lastLibraryHash = libraryReturn(hash);
+    $("nav-browse").href = state.lastLibraryHash;
+    await browserPage.show(hash, pageController.signal);
   }
 }
 
 async function loadArchives(offset = state.archiveOffset) {
   const version = ++archiveVersion;
+  const signal = pageController.signal;
   state.archiveOffset = offset;
   $("archive-list").replaceChildren(
     el("p", { class: "text-secondary py-4" }, "正在读取最近归档…"),
@@ -300,6 +359,7 @@ async function loadArchives(offset = state.archiveOffset) {
   try {
     const { data } = await dmb(dmbUrl, "/v1/documents/query", {
       method: "POST",
+      signal,
       body: {
         mode: "by_status",
         params: { status: "archived" },
@@ -309,7 +369,7 @@ async function loadArchives(offset = state.archiveOffset) {
         order: "DESC",
       },
     });
-    if (version !== archiveVersion) return;
+    if (version !== archiveVersion || signal.aborted) return;
     setService(true);
     if (!data?.length) {
       $("archive-list").replaceChildren(
@@ -354,7 +414,7 @@ async function loadArchives(offset = state.archiveOffset) {
       }),
     );
   } catch (error) {
-    if (version !== archiveVersion) return;
+    if (version !== archiveVersion || signal.aborted) return;
     setService(false);
     $("archive-list").replaceChildren(
       errorBox(
@@ -718,7 +778,11 @@ async function loadEntry(
         ? pending.comics && !pending.needsCMRefresh
           ? Promise.resolve(pending.comics)
           : readComicLibrary({ signal })
-        : Promise.resolve(null);
+        : state.entryFromLibrary
+          ? browserPage.getComic(id)
+            ? Promise.resolve(new Map([[id, browserPage.getComic(id)]]))
+            : readComicLibrary({ signal })
+          : Promise.resolve(null);
     const [preview, , source, comicLibrary] = await Promise.all([
       api(`/comics/${id}/preview`, { signal }),
       loadGroups(signal),
@@ -737,7 +801,8 @@ async function loadEntry(
     state.source = source.data || null;
     state.sourceError = source.error || null;
     state.existingComic = comicLibrary?.get(id) || null;
-    if (comicLibrary) pending.comics = comicLibrary;
+    if (comicLibrary && state.entryReturn === "#/pending")
+      pending.comics = comicLibrary;
     if (pending.documents && source.data) {
       pending.documents.set(id, documentSummary(source.data));
       pending.needsCMRefresh = true;
@@ -1661,7 +1726,19 @@ function renderResult() {
       el(
         "a",
         { href: state.entryReturn, class: "btn btn-primary" },
-        state.entryReturn === "#/pending" ? "返回未完成列表 →" : "处理下一部 →",
+        state.entryReturn === "#/pending"
+          ? "返回未完成列表 →"
+          : state.entryFromLibrary
+            ? "返回漫画库 →"
+            : "处理下一部 →",
+      ),
+      el(
+        "a",
+        {
+          href: `#/read/${state.comicId}?back=${encodeURIComponent(state.lastLibraryHash)}`,
+          class: "btn btn-outline-secondary",
+        },
+        "阅读漫画",
       ),
       button(
         "查看本次标签",
@@ -1735,6 +1812,7 @@ async function commitComic() {
     );
     state.result = data;
     state.phase = "success";
+    browserPage.clear();
     pending.needsCMRefresh = true;
     announce("漫画录入成功。");
   } catch (error) {
@@ -1942,7 +2020,11 @@ async function showGeneric(id, offset = 0) {
 $("entry-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const value = $("comic-id").value.trim();
-  if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value))) {
+  if (
+    !/^\d+$/.test(value) ||
+    !Number.isSafeInteger(Number(value)) ||
+    Number(value) <= 0
+  ) {
     $("comic-id").setCustomValidity("请输入有效的文档 ID。");
     $("comic-id").reportValidity();
     return;
@@ -1996,6 +2078,7 @@ $("review-button").addEventListener("click", () => {
 $("metadata-open").addEventListener("click", showMetadata);
 $("settings-open").addEventListener("click", () => {
   $("dmb-url").value = dmbUrl;
+  $("image-route-" + imageRoute).checked = true;
   $("settings-error").textContent = "";
   $("settings-dialog").showModal();
 });
@@ -2003,18 +2086,34 @@ $("settings-form").addEventListener("submit", (event) => {
   event.preventDefault();
   try {
     const value = validateDmbUrl($("dmb-url").value.trim());
-    if (dirty() && !confirm("更换归档服务会清除当前未保存的选择，是否继续？"))
+    const nextImageRoute = $("image-route-direct").checked ? "direct" : "proxy";
+    const serviceChanged = value !== dmbUrl;
+    const imageRouteChanged = nextImageRoute !== imageRoute;
+    if (
+      serviceChanged &&
+      dirty() &&
+      !confirm("更换归档服务会清除当前未保存的选择，是否继续？")
+    )
       return;
-    dmbUrl = value;
-    pending.controller?.abort();
-    pending.documents = pending.comics = pending.comparison = null;
-    pending.phase = "idle";
-    pending.needsCMRefresh = false;
     localStorage.setItem("comicmanager.dmbUrl", value);
-    for (const item of state.items) item.dirty = false;
+    localStorage.setItem("comicmanager.imageRoute", nextImageRoute);
+    dmbUrl = value;
+    imageRoute = nextImageRoute;
     $("settings-dialog").close();
-    if ((location.hash || "#/") === "#/") void loadArchives(0);
-    else location.hash = "#/";
+    if (serviceChanged) {
+      pending.controller?.abort();
+      pending.documents = pending.comics = pending.comparison = null;
+      pending.phase = "idle";
+      pending.needsCMRefresh = false;
+      for (const item of state.items) item.dirty = false;
+      void route();
+    } else if (imageRouteChanged) {
+      if (state.view === "browse") void browserPage.refreshImages();
+      if (state.view === "reader") reader.refreshImage();
+      announce(
+        `图片线路已切换为${imageRoute === "direct" ? "8880 直连" : "代理"}。`,
+      );
+    }
   } catch (error) {
     $("settings-error").textContent = error.message;
   }
@@ -2079,6 +2178,27 @@ window.addEventListener("beforeunload", (event) => {
     event.preventDefault();
     event.returnValue = "";
   }
+});
+const browserPage = createLibraryPage({
+  el,
+  button,
+  empty,
+  errorBox,
+  getDmbUrl: () => dmbUrl,
+  getImageRoute: () => imageRoute,
+  setService,
+  announce,
+  refreshRoute: route,
+});
+const reader = createComicReader({
+  el,
+  button,
+  empty,
+  errorBox,
+  getDmbUrl: () => dmbUrl,
+  getImageRoute: () => imageRoute,
+  setService,
+  announce,
 });
 window.addEventListener("hashchange", route);
 void route();

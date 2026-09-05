@@ -18,7 +18,15 @@ export class ApiError extends Error {
 
 export async function request(
   url,
-  { method = "GET", body, signal, headers = {}, external = false } = {},
+  {
+    method = "GET",
+    body,
+    signal,
+    headers = {},
+    external = false,
+    responseType = "json",
+    redirect = "follow",
+  } = {},
 ) {
   let response;
   try {
@@ -31,6 +39,7 @@ export async function request(
       body: body === undefined ? undefined : JSON.stringify(body),
       credentials: external ? "omit" : "same-origin",
       cache: "no-store",
+      redirect,
       signal: signal
         ? AbortSignal.any([signal, AbortSignal.timeout(30000)])
         : AbortSignal.timeout(30000),
@@ -45,7 +54,10 @@ export async function request(
   }
   let data;
   try {
-    data = await response.json();
+    if (response.ok && responseType === "text") data = await response.text();
+    else if (response.ok && responseType === "blob")
+      data = await response.blob();
+    else data = await response.json();
   } catch {
     throw new ApiError(
       "服务返回了无法读取的响应。",
