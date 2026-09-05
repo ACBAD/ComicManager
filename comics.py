@@ -46,25 +46,24 @@ class ComicManager:
         self.tag_manager = tag_manager
 
     def add_comic(self, comic: Comic, allow_override: bool = False) -> None:
-        # Check if comic with same ID already exists
-        cursor = self.conn.execute("SELECT id FROM comics WHERE id = ?", (comic.id,))
-        if cursor.fetchone():
-            if not allow_override:
-                raise ComicIDExistsError(comic)
-            else:
-                self.conn.execute("DELETE FROM comic_tags WHERE id = ?", (comic.id,))
-                self.conn.execute("DELETE FROM comic_authors WHERE id = ?", (comic.id,))
+        with self.conn:
+            cursor = self.conn.execute("SELECT id FROM comics WHERE id = ?", (comic.id,))
+            if cursor.fetchone():
+                if not allow_override:
+                    raise ComicIDExistsError(comic)
+                self.conn.execute("DELETE FROM comic_tags WHERE comic_id = ?", (comic.id,))
+                self.conn.execute("DELETE FROM comic_authors WHERE comic_id = ?", (comic.id,))
                 self.conn.execute("DELETE FROM comics WHERE id = ?", (comic.id,))
-        try:
             self.conn.execute("INSERT INTO comics (id, title, series_name, volume_number) VALUES (?, ?, ?, ?)", (comic.id, comic.title, comic.series_name, comic.volume_number))
-            for author in comic.authors:
+            for author in dict.fromkeys(comic.authors):
                 self.conn.execute("INSERT INTO comic_authors (comic_id, author_name) VALUES (?, ?)", (comic.id, author))
+            linked_tag_ids = set()
             for specific_tag in comic.comic_tags:
                 specific_tag_id = self.tag_manager.get_specific_tag_id(specific_tag)
+                if specific_tag_id in linked_tag_ids:
+                    continue
                 self.conn.execute("INSERT INTO comic_tags (comic_id, specific_tag_id) VALUES (?, ?)", (comic.id, specific_tag_id))
-            self.conn.commit()
-        finally:
-            self.conn.rollback()
+                linked_tag_ids.add(specific_tag_id)
 
     def get_comic(self, comic_id: int) -> Comic | None:
         cursor = self.conn.execute("SELECT id, title, series_name, volume_number, updated_at FROM comics WHERE id = ?", (comic_id,))

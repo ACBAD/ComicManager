@@ -10,6 +10,7 @@ const state = {
   comicId: null,
   groups: [],
   preview: null,
+  sourceRevision: null, // 来自 preview 的 ETag 响应头，不在 Comic 模型中
   tagItems: [],
   activeIndex: null,
   pendingRequestCount: 0,
@@ -36,7 +37,6 @@ fatal-error
 ```js
 {
   specificTag: {},
-  inferredGroup: null,
   status: 'loading',
   exactMapping: null,
   candidates: [],
@@ -104,11 +104,11 @@ preview 后的 exact 查询采用有限并发，不使用无上限 `Promise.all(
 
 ### `GENERIC_TAG_EXISTS`
 
-读取错误响应中的 `existing` GenericTag，继续创建 SpecificTag 映射。
+用提交的 tag_group 和 name 精确查询 GenericTag ID，按需读取详情，再继续创建映射。
 
 ### `SPECIFIC_TAG_MAPPING_CONFLICT`
 
-停止当前保存，重新执行该标签的 exact 查询：
+停止当前保存，重新执行该标签的 exact 查询取得 ID，再读取 `/generic` 关系：
 
 - 如果已经映射到用户刚选择的 GenericTag，视为成功。
 - 如果映射到其他 GenericTag，显示冲突双方，不自动覆盖。
@@ -158,4 +158,3 @@ Comic commit 收到该错误后：
 - 外部 URL 必须验证协议，只允许预期的 `http`/`https` 或站内相对路径。
 - 错误详情默认折叠，避免将服务端堆栈直接展示给普通用户。
 - 客户端校验只改善体验，所有身份、枚举和唯一性约束仍由服务端验证。
-

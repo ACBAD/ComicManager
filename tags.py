@@ -65,7 +65,7 @@ class SpecificTag[SiteT: SourceSite](pydantic.BaseModel, ABC):
         validate_assignment=True,
     )
 
-    origin_name: str
+    origin_name: str = pydantic.Field(min_length=1, pattern=r"\S")
     site: SiteT
 
     @abstractmethod
@@ -145,10 +145,10 @@ class SpecificTagHitomi(SpecificTag):
     tag_sex: Literal["male", "female"] | None = None
 
     def inference_group(self) -> TagGroup | None:
-        if not self.group:
-            return None
-        if self.group in TagGroup.__members__:
+        try:
             return TagGroup(self.group)
+        except ValueError:
+            pass
         if self.group in ("parody", "parodys"):
             return TagGroup.Parody
         if self.group in ("character", "characters"):
@@ -165,8 +165,14 @@ class SpecificTagNHentai(SpecificTag):
 
     group: TagGroup
 
+    def inference_group(self) -> TagGroup:
+        return self.group
+
 class SpecificTagJmComic(SpecificTag):
     site: Literal[SourceSite.JmComic] = SourceSite.JmComic
+
+    def inference_group(self) -> None:
+        return None
 
 SpecificTagUnion: TypeAlias = Annotated[
     SpecificTagHitomi | SpecificTagNHentai | SpecificTagJmComic,
@@ -182,7 +188,7 @@ class GenericTag(pydantic.BaseModel):
     )
 
     tag_group: TagGroup
-    name: str
+    name: str = pydantic.Field(min_length=1, pattern=r"\S")
 
 
 class GenericTagNotFoundError(Exception):
@@ -197,6 +203,8 @@ class MetaSchemaViolationError(Exception):
     """当站点特定标签的元信息不符合预期的 schema 时抛出此异常。"""
     def __init__(self, specific_tag: SpecificTagUnion, db_schema_hash: str, tag_schema_hash: str) -> None:
         self.specific_tag = specific_tag
+        self.db_schema_hash = db_schema_hash
+        self.tag_schema_hash = tag_schema_hash
         super().__init__(f"Meta schema violation for {specific_tag}, expected schema hash: {tag_schema_hash}, but found: {db_schema_hash}")
 
 
@@ -228,16 +236,18 @@ class TagManager:
         Raises:
             GenericTagExistsError: 如果通用标签已存在。
         """
-        cursor = self.sqlite_conn.cursor()
+        generic_tag = GenericTag(tag_group=group, name=name)
         try:
-            cursor.execute(
-                "INSERT INTO tags (tag_group, name) VALUES (?, ?)",
-                (group, name)
-            )
-            self.sqlite_conn.commit()
-            return GenericTag(tag_group=group, name=name)
+            with self.sqlite_conn:
+                self.sqlite_conn.execute(
+                    "INSERT INTO tags (tag_group, name) VALUES (?, ?)",
+                    (group, name)
+                )
+            return generic_tag
         except sqlite3.IntegrityError as e:
-            raise GenericTagExistsError(GenericTag(tag_group=group, name=name)) from e
+            if self.query_generic_tag(group, name):
+                raise GenericTagExistsError(generic_tag) from e
+            raise
 
     def query_generic_tag(self, group: TagGroup, name: str | None = None) -> list[GenericTag]:
         """
@@ -262,6 +272,72 @@ class TagManager:
         rows = cursor.fetchall()
         return [GenericTag(tag_group=row[0], name=row[1]) for row in rows]
 
+    def query_generic_tag_ids(
+        self, group: TagGroup, name: str | None = None, *,
+        name_match: Literal["exact", "prefix", "contains"] = "exact",
+        limit: int = 20, offset: int = 0,
+    ) -> tuple[list[int], int]:
+        where = "tag_group = ?"
+        params: list[object] = [group]
+        if name is not None:
+            # These are literal, case-sensitive matches, including '%' and '_'.
+            if name_match == "exact":
+                where += " AND name = ?"
+                params.append(name)
+            elif name_match == "prefix":
+                where += " AND substr(name, 1, length(?)) = ?"
+                params.extend([name, name])
+            elif name_match == "contains":
+                where += " AND instr(name, ?) > 0"
+                params.append(name)
+            else:
+                raise ValueError(f"Unsupported name match: {name_match}")
+        total = self.sqlite_conn.execute(
+            f"SELECT COUNT(*) FROM tags WHERE {where}", params
+        ).fetchone()[0]
+        rows = self.sqlite_conn.execute(
+            f"SELECT id FROM tags WHERE {where} ORDER BY id LIMIT ? OFFSET ?",
+            [*params, limit, offset],
+        ).fetchall()
+        return [row[0] for row in rows], total
+
+    def _query_specific_tag_ids(
+        self, where: str, params: Sequence[object], limit: int, offset: int,
+    ) -> tuple[list[int], int]:
+        total = self.sqlite_conn.execute(
+            f"SELECT COUNT(*) FROM specific_tags WHERE {where}", params
+        ).fetchone()[0]
+        rows = self.sqlite_conn.execute(
+            f"SELECT id FROM specific_tags WHERE {where} ORDER BY id LIMIT ? OFFSET ?",
+            [*params, limit, offset],
+        ).fetchall()
+        return [row[0] for row in rows], total
+
+    def query_specific_tag_ids(
+        self, site: SourceSite, origin_name: str, meta_json: str | None = None, *,
+        limit: int = 50, offset: int = 0,
+    ) -> tuple[list[int], int]:
+        where = "site = ? AND origin_name = ?"
+        params: list[object] = [site, origin_name]
+        if meta_json is not None:
+            where += " AND meta_json = ?"
+            params.append(meta_json)
+        return self._query_specific_tag_ids(where, params, limit, offset)
+
+    def get_generic_tag_specific_ids(
+        self, generic_tag_id: int, *, limit: int = 50, offset: int = 0,
+    ) -> tuple[list[int], int]:
+        return self._query_specific_tag_ids("generic_tag_id = ?", [generic_tag_id], limit, offset)
+
+    def validate_meta_schema(self, specific_tag: SpecificTagUnion) -> None:
+        """Check an existing schema without creating records during reads."""
+        row = self.sqlite_conn.execute(
+            "SELECT schema_hash FROM meta_schema_version WHERE site = ?", (specific_tag.site,)
+        ).fetchone()
+        schema_hash = specific_tag.meta_schema_hash()
+        if row is not None and row[0] != schema_hash:
+            raise MetaSchemaViolationError(specific_tag, row[0], schema_hash)
+
     def get_specific_tag_id(self, specific_tag: SpecificTagUnion) -> int:
         """
         获取站点特定标签的 ID。
@@ -272,6 +348,7 @@ class TagManager:
         Raises:
             SpecificTagNotFoundError: 如果站点特定标签不存在。
         """
+        self.validate_meta_schema(specific_tag)
         cursor = self.sqlite_conn.cursor()
         cursor.execute(
             "SELECT id FROM specific_tags WHERE site = ? AND origin_name = ? AND meta_json = ?",
@@ -383,15 +460,13 @@ class TagManager:
             raise GenericTagNotFoundError(generic_tag)
         return row[0]
 
-    def get_generic_tag(self, tag_id: int) -> GenericTag:
+    def get_generic_tag(self, tag_id: int) -> GenericTag | None:
         """
         根据通用标签 ID 获取通用标签。
         Args:
             tag_id: 通用标签的 ID。
         Returns:
-            通用标签。
-        Raises:
-            GenericTagNotFoundError: 如果通用标签不存在。
+            通用标签；ID 不存在时返回 None。
         """
         cursor = self.sqlite_conn.cursor()
         cursor.execute(
@@ -400,7 +475,7 @@ class TagManager:
         )
         row = cursor.fetchone()
         if row is None:
-            raise ValueError(f"Generic tag with ID {tag_id} not found")
+            return None
         return GenericTag(tag_group=row[0], name=row[1])
 
     def generalize(self, specific_tag: SpecificTagUnion) -> GenericTag:
@@ -414,6 +489,7 @@ class TagManager:
             SpecificTagNotFoundError: 如果站点特定标签没有对应的通用标签。
             ValueError: 如果通用标签不存在。
         """
+        self.validate_meta_schema(specific_tag)
         cursor = self.sqlite_conn.cursor()
         result = cursor.execute(
             "SELECT generic_tag_id FROM specific_tags WHERE site = ? AND origin_name = ? AND meta_json = ?",
@@ -463,29 +539,21 @@ class TagManager:
             MetaSchemaViolationError: 如果站点特定标签的元信息不符合预期的 schema。
             SpecificTagExistsError: 如果站点特定标签已存在。
         """
-        schema_hash = specific_tag.meta_schema_hash()
-        cursor = self.sqlite_conn.cursor()
-        cursor.execute(
-            "SELECT schema_hash FROM meta_schema_version WHERE site = ?",
-            (specific_tag.site,)
-        )
-        row = cursor.fetchone()
-        if row is None:
-            self._create_meta_schema(specific_tag)
-        cursor.execute(
-            "SELECT schema_hash FROM meta_schema_version WHERE site = ?",
-            (specific_tag.site,)
-        )
-        row = cursor.fetchone()
-        db_schema_hash = row[0]
-        if db_schema_hash != schema_hash:
-            raise MetaSchemaViolationError(specific_tag, db_schema_hash, schema_hash)
-        generic_tag_id = self._get_generic_tag_id(generic_tag)
         try:
-            cursor.execute(
-                "INSERT INTO specific_tags (site, origin_name, meta_json, generic_tag_id) VALUES (?, ?, ?, ?)",
-                (specific_tag.site, specific_tag.origin_name, specific_tag.dump_specific_json(), generic_tag_id)
-            )
-            self.sqlite_conn.commit()
+            with self.sqlite_conn:
+                generic_tag_id = self._get_generic_tag_id(generic_tag)
+                self.sqlite_conn.execute(
+                    "INSERT INTO meta_schema_version (site, schema_hash) VALUES (?, ?) ON CONFLICT(site) DO NOTHING",
+                    (specific_tag.site, specific_tag.meta_schema_hash()),
+                )
+                self.validate_meta_schema(specific_tag)
+                self.sqlite_conn.execute(
+                    "INSERT INTO specific_tags (site, origin_name, meta_json, generic_tag_id) VALUES (?, ?, ?, ?)",
+                    (specific_tag.site, specific_tag.origin_name, specific_tag.dump_specific_json(), generic_tag_id)
+                )
         except sqlite3.IntegrityError as e:
+            try:
+                self.get_specific_tag_id(specific_tag)
+            except SpecificTagNotFoundError:
+                raise e
             raise SpecificTagExistsError(specific_tag) from e

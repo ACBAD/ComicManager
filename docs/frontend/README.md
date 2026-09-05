@@ -3,7 +3,7 @@
 本文档记录 ComicManager 新版 Web 前端的既定设计。目标是在后续上下文丢失、
 更换实现者或继续重构时，仍能恢复当前的架构边界和交互意图。
 
-最后更新：2026-07-26。
+最后更新：2026-09-05。
 
 ## 阅读顺序
 
@@ -23,6 +23,10 @@ API 分为两个资源域：
 
 不建立 `/api/comic-imports` 这一类只服务于归一化页面的专用资源。漫画录入页面
 只是 `/api/tags` 和 `/api/comics` 的一个客户端。
+
+后端直接返回现有 GenericTag、SpecificTag、Comic 模型，查询接口返回 ID 数组。
+前端按需读取详情、映射关系及 DMB 来源信息，自行组织候选和汇总，不要求后端
+为页面增加展示模型或拼装关联数据。具体返回结构以 API 对接约定为准。
 
 ## 已确定的核心规则
 
@@ -48,7 +52,7 @@ API 分为两个资源域：
 - **精确映射**：数据库中存在完整 SpecificTag 身份对应的记录。
 - **相似标签**：`site + origin_name` 相同，但 metadata 不同的 SpecificTag。
 - **候选目标**：相似 SpecificTag 当前映射到的 GenericTag。
-- **推断组**：服务端调用 `SpecificTag.inference_group()` 得到的只读建议。
+- **组选择**：用户根据原始 SpecificTag 信息选择的 GenericTag 分类。
 - **待处理标签**：尚不存在精确映射的 SpecificTag。
 
 ## 相关源码
@@ -58,4 +62,3 @@ API 分为两个资源域：
 - [`handlers.py`](../../handlers.py)：站点 metadata 解析。
 - [`comic.sql`](../../comic.sql)：Tag 和 Comic 数据库约束。
 - [`test_comics.py`](../../test_comics.py)：当前 CLI 录入流程的行为基线。
-

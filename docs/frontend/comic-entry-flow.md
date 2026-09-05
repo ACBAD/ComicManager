@@ -39,12 +39,13 @@ flowchart TD
 2. `GET /api/comics/{comic_id}/preview`
 
 TagGroup 可以在浏览器会话内缓存；preview 不缓存。
+preview 响应体直接是 Comic；来源版本从 ETag 响应头读取，去掉 HTTP 引号后保存。
 
 加载期间显示漫画级骨架屏，不先渲染空表单，避免用户误以为漫画没有标签。
 
 ## 2. 获取精确映射状态
 
-preview 返回 SpecificTag 后，对每个标签调用：
+从 preview 返回的 Comic.comic_tags 取得 SpecificTag 后，对每个标签调用：
 
 ```http
 POST /api/tags/specific/query
@@ -56,12 +57,13 @@ SQLite 查询。
 
 每个标签进入以下状态之一：
 
-- `resolved`：精确查询返回一条 SpecificTagView。
+- `resolved`：精确查询返回一个 SpecificTag ID。
 - `unresolved`：没有精确记录。
 - `error`：网络错误或服务端验证错误。
 
 数据库唯一约束保证精确查询最多得到一条。如果服务端返回多条，应视为数据损坏，
 不得由前端自行选择。
+前端需要显示对应 GenericTag 时，再调用该 ID 的 `/generic` 关系接口。
 
 ## 3. 处理未映射标签
 
@@ -72,7 +74,8 @@ POST /api/tags/specific/query
 {"match": "same_origin", "site": "...", "origin_name": "..."}
 ```
 
-候选结果按 `generic_tag.id` 合并。
+查询返回 SpecificTag ID 数组。前端按需读取每个 ID 的详情和 `/generic` 关系，
+按 GenericTag 的 `(tag_group, name)` 合并候选；需要写入映射时再精确查询其 ID。
 
 ### 3.1 有一个 GenericTag 候选
 
@@ -103,11 +106,10 @@ POST /api/tags/specific/query
 
 新标签名称默认填入 `origin_name`，但允许编辑。
 
-### 3.4 推断 TagGroup
+### 3.4 选择 TagGroup
 
-preview 中的 `inferred_group` 非空时，组选择框预填该值，但允许用户修改。
-
-`inferred_group` 为空时必须人工选择。不得默认选择 `tag`。
+使用原始 SpecificTag 的信息辅助用户选择，不依赖 preview 附加的推断字段。
+未确定分类时必须人工选择，不得默认选择 `tag`。
 
 ### 3.5 Group 特殊流程
 
@@ -146,16 +148,16 @@ POST /api/tags/specific
 创建新 GenericTag：
 
 1. `POST /api/tags/generic`
-2. 取得返回的 GenericTag ID。
+2. 以返回 GenericTag 的 tag_group 和 name 调用 exact 查询取得 ID。
 3. `POST /api/tags/specific`
 
-若创建 GenericTag 时收到 `GENERIC_TAG_EXISTS`，使用响应中的已有标签继续第二步，
+若创建 GenericTag 时收到 `GENERIC_TAG_EXISTS`，以提交的组和名称精确查询后继续第二步，
 不要求用户重新操作。
 
 映射成功后：
 
 - 将该标签状态改为 `resolved`。
-- 保留服务端返回的 SpecificTag ID 和 GenericTag。
+- 保留返回的原始 SpecificTag；ID 通过 exact 查询取得，GenericTag 通过关系接口读取。
 - 自动选中下一个待处理标签。
 - 更新页面总进度。
 
@@ -175,6 +177,8 @@ POST /api/tags/specific
 - SpecificTag 总数。
 - 按 GenericTag group 汇总的最终标签。
 - 本次会话新建的 GenericTag 和 SpecificTag 数量。
+
+这些信息由前端组合已读取的资源。来源信息另行读取 DMB，统计由页面状态计算。
 
 ## 6. Comic commit
 
@@ -199,4 +203,3 @@ POST /api/comics/{comic_id}/commit
 
 如果仍有尚未写入的选择或正在进行的请求，关闭或跳转页面前使用
 `beforeunload` 提示。仅仅存在未映射标签时不弹提示，因为这些状态尚未产生修改。
-

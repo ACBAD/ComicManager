@@ -61,6 +61,8 @@ Bootstrap 栅格建议：
 - 已映射数量与总数
 - 当前页面状态
 
+由前端按需组合 Comic、标签关系和 DMB 来源数据；预览接口只返回 Comic 原模型。
+
 组件建议：
 
 - `breadcrumb`：返回列表或来源文档。
@@ -122,13 +124,8 @@ URL 使用新标签页打开，并增加 `rel="noopener noreferrer"`。
 
 使用 `form-select`，选项来自 `GET /api/tags/groups`。
 
-推断结果存在时显示：
-
-> 服务端根据来源 group 推断为 Character。
-
-推断失败时显示：
-
-> 无法推断归一化组，请人工选择。系统不会自动归入 Tag。
+选择框结合原始 SpecificTag 信息供用户确定分类，不依赖 preview 附加的推断字段。
+尚未确定分类时提示用户选择，不自动归入 Tag。
 
 在用户选定 TagGroup 前，禁用 GenericTag 创建按钮。
 
@@ -213,4 +210,3 @@ URL 使用新标签页打开，并增加 `rel="noopener noreferrer"`。
 - 单选候选使用真实 `input[type=radio]`。
 - 支持键盘 Tab 顺序完成整个映射流程。
 - 图标必须配套文字或 `aria-label`。
-
