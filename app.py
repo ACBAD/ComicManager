@@ -151,7 +151,7 @@ tag_router.include_router(generic_tag_router, prefix='/generic')
                 dependencies=[fastapi.Depends(Authoricator())],
                 name='comics.get_comic_preview')
 def get_comic_preview(comic_id: int) -> dict:
-    comic = comic_manager.get_comic(comic_id)
+    comic = dmb_client.fetch_comic_info(str(comic_id))
     if comic is None:
         raise fastapi.HTTPException(status_code=fastapi.status.HTTP_404_NOT_FOUND, detail=f"Comic with id {comic_id} not found")
     return {
