@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { batchEntryCandidates, runBatchEntry } from "../src/batch-entry.js";
+import { runBatchEntry } from "../src/batch-entry.js";
 import { stableKey, genericKey } from "../src/entry-api.js";
-import { filterPending } from "../src/pending-comics.js";
+import { entryQueue } from "../src/pending-comics.js";
 
 const groups = ["tag", "group", "character"];
 const tag = (name, group = "tags", extra = {}) => ({
@@ -19,6 +19,7 @@ const row = (id, extra = {}) => ({
     source: "hitomi",
     has_metadata: true,
     status: "archived",
+    updated_at: "2026-09-04T00:00:00Z",
   },
   ...extra,
 });
@@ -87,7 +88,23 @@ function server(t, documents, { mapped = [], generics = [], intercept } = {}) {
       });
       return response(body.specific_tag, 201);
     }
-    if (/^\/api\/comics\/\d+\/commit$/.test(url)) return response({}, 201);
+    if ((match = url.match(/^\/api\/comics\/(\d+)\/commit(?:\?.*)?$/)))
+      return response(
+        { id: Number(match[1]), title: `comic ${match[1]}` },
+        201,
+      );
+    if (url === "/api/comics/query") {
+      const id = Number(body.title.replace("comic ", ""));
+      return response([
+        { id, title: body.title, updated_at: "2026-09-06T00:00:00Z" },
+      ]);
+    }
+    if ((match = url.match(/^https:\/\/dmb.example\/v1\/documents\/(\d+)$/)))
+      return response({
+        document_id: Number(match[1]),
+        ...row(Number(match[1])).document,
+        source_meta: { title: "metadata" },
+      });
     throw new Error(`Unexpected API: ${url}`);
   });
   return {
@@ -105,13 +122,14 @@ async function run(records, extra = {}) {
   const results = [];
   const outcome = await runBatchEntry(records, {
     groups,
+    dmbUrl: "https://dmb.example",
     onResult: (result) => results.push(result),
     ...extra,
   });
   return { results, outcome };
 }
 
-test("整批依次直接提交、创建 group、复用同名 group、跳过混合缺失后继续下一部", async (t) => {
+test("依次直接提交、创建或复用 group，遇到非 group 缺失停在当前部", async (t) => {
   const mapped = tag("mapped");
   const groupA = groupTag("new circle", { url: "/a" });
   const groupB = groupTag("new circle", { url: "/b" });
@@ -134,7 +152,7 @@ test("整批依次直接提交、创建 group、复用同名 group、跳过混�
   const { results } = await run([1, 2, 3, 4, 5].map((id) => row(id)));
   assert.deepEqual(
     results.map((value) => value.status),
-    ["success", "success", "success", "skipped", "success"],
+    ["success", "success", "success", "blocked"],
   );
   assert.deepEqual(
     api.calls
@@ -149,7 +167,7 @@ test("整批依次直接提交、创建 group、复用同名 group、跳过混�
   const commits = api.calls.filter(({ url }) => url.endsWith("/commit"));
   assert.deepEqual(
     commits.map(({ url }) => url),
-    [1, 2, 3, 5].map((id) => `/api/comics/${id}/commit`),
+    [1, 2, 3].map((id) => `/api/comics/${id}/commit`),
   );
   for (const call of commits) assert.equal(call.body, null);
   assert.equal(
@@ -165,16 +183,14 @@ test("整批依次直接提交、创建 group、复用同名 group、跳过混�
   );
 });
 
-test("当前筛选的全部未入库结果进入队列，不只取第一页，不覆盖已有 CM", async (t) => {
+test("队列涵盖所有分页，已有但未完成的漫画也按顺序更新", async (t) => {
   const all = Array.from({ length: 25 }, (_, index) => row(index + 1));
   all.push(
     row(30, { comic: { id: 30 } }),
     row(31, { document: null, comic: { id: 31 } }),
   );
-  const candidates = batchEntryCandidates(
-    filterPending(all, { search: "comic" }),
-  );
-  assert.equal(candidates.length, 25);
+  const candidates = entryQueue(all);
+  assert.equal(candidates.length, 26);
   const api = server(
     t,
     Object.fromEntries(candidates.map(({ id }) => [id, []])),
@@ -182,21 +198,23 @@ test("当前筛选的全部未入库结果进入队列，不只取第一页，�
   const { results } = await run(candidates);
   assert.equal(
     results.filter((result) => result.status === "success").length,
-    25,
+    26,
   );
   assert.equal(
-    api.calls.some(({ url }) => url.includes("override")),
-    false,
+    api.calls.some(
+      ({ url }) => url === "/api/comics/30/commit?allow_override=true",
+    ),
+    true,
   );
 });
 
-test("非 group 和未知来源分类跳过，整部没有标签写入或 commit", async (t) => {
+test("非 group 和未知来源分类会阻断队列，整部没有标签写入或 commit", async (t) => {
   const api = server(t, {
     1: [groupTag("circle"), tag("x", "characters")],
     2: [tag("circle", "unknown")],
   });
   const { results } = await run([row(1), row(2)]);
-  assert.ok(results.every((result) => result.status === "skipped"));
+  assert.ok(results.every((result) => result.status === "blocked"));
   assert.deepEqual(api.writes(), []);
 });
 
@@ -222,7 +240,7 @@ test("弱 ETag 或缺少 ETag 都不影响批量录入", async (t) => {
   );
 });
 
-test("标签查询失败不能当成未映射来创建，失败后继续下一部", async (t) => {
+test("标签查询失败不能当成未映射来创建，也不能继续下一部", async (t) => {
   const broken = groupTag("broken");
   const api = server(
     t,
@@ -238,15 +256,15 @@ test("标签查询失败不能当成未映射来创建，失败后继续下一�
   const { results } = await run([row(1), row(2)]);
   assert.deepEqual(
     results.map((value) => value.status),
-    ["failed", "success"],
+    ["failed"],
   );
   assert.deepEqual(
     api.writes().map(({ url }) => url),
-    ["/api/comics/2/commit"],
+    [],
   );
 });
 
-test("group 映射冲突时当前部不提交，后续漫画仍继续", async (t) => {
+test("group 映射冲突时当前部不提交，后续漫画保持等待", async (t) => {
   const api = server(
     t,
     { 1: [groupTag("conflict")], 2: [] },
@@ -260,17 +278,17 @@ test("group 映射冲突时当前部不提交，后续漫画仍继续", async (t
   const { results } = await run([row(1), row(2)]);
   assert.deepEqual(
     results.map((value) => value.status),
-    ["skipped", "success"],
+    ["blocked"],
   );
   assert.deepEqual(
     api.calls
       .filter(({ url }) => url.endsWith("/commit"))
       .map(({ url }) => url),
-    ["/api/comics/2/commit"],
+    [],
   );
 });
 
-test("最新来源存在未映射标签或已并发入库时跳过，不自动重试或覆盖", async (t) => {
+test("最新来源存在未映射标签时停住，不自动重试或覆盖", async (t) => {
   const api = server(
     t,
     { 1: [], 2: [], 3: [] },
@@ -286,11 +304,11 @@ test("最新来源存在未映射标签或已并发入库时跳过，不自动�
   const { results } = await run([row(1), row(2), row(3)]);
   assert.deepEqual(
     results.map((value) => value.status),
-    ["skipped", "skipped", "success"],
+    ["blocked"],
   );
   assert.equal(
     api.calls.filter(({ url }) => url.endsWith("/preview")).length,
-    3,
+    1,
   );
 });
 
@@ -337,15 +355,69 @@ test("权限错误停止整批，避免继续请求其他漫画", async (t) => {
   );
 });
 
-test("来源不可用及已有漫画直接跳过，不读取预览", async (t) => {
+test("来源不可用时停在队首，不读取后续预览", async (t) => {
   const api = server(t, {});
-  const { results } = await run([
-    row(1, { comic: { id: 1 } }),
-    row(2, { document: null }),
-    row(3, { document: { status: "deleted" } }),
-    row(4, { document: { source: "unknown", has_metadata: true } }),
-    row(5, { document: { source: "hitomi", has_metadata: false } }),
+  const { results, outcome } = await run([
+    row(1, { document: { ...row(1).document, has_metadata: false } }),
+    row(2),
   ]);
-  assert.ok(results.every((value) => value.status === "skipped"));
+  assert.deepEqual(
+    results.map(({ id, status }) => [id, status]),
+    [[1, "blocked"]],
+  );
+  assert.equal(outcome.stopped, true);
   assert.deepEqual(api.calls, []);
+});
+
+test("并发录入冲突仍停在当前部，刷新确认后才能继续", async (t) => {
+  const api = server(
+    t,
+    { 1: [], 2: [] },
+    {
+      intercept: (url) =>
+        url === "/api/comics/1/commit" ? failure("COMIC_ALREADY_EXISTS") : null,
+    },
+  );
+  const { results, outcome } = await run([row(1), row(2)]);
+  assert.equal(results[0].status, "blocked");
+  assert.equal(outcome.stopped, true);
+  assert.ok(!api.calls.some(({ url }) => url.includes("/2/")));
+});
+
+test("输入顺序不能改变按更新时间录入的顺序", async (t) => {
+  const api = server(t, { 1: [], 2: [], 3: [] });
+  await run([
+    row(1, {
+      document: { ...row(1).document, updated_at: "2026-09-05T00:00:00Z" },
+    }),
+    row(3),
+    row(2),
+  ]);
+  assert.deepEqual(
+    api.calls
+      .filter(({ url }) => url.endsWith("/commit"))
+      .map(({ url }) => url),
+    [2, 3, 1].map((id) => `/api/comics/${id}/commit`),
+  );
+});
+
+test("提交成功但 CM 时间不晚于 DMB，保留当前部并停止", async (t) => {
+  const api = server(
+    t,
+    { 1: [], 2: [] },
+    {
+      intercept: (url) =>
+        url === "https://dmb.example/v1/documents/1"
+          ? response({
+              document_id: 1,
+              ...row(1).document,
+              updated_at: "2026-09-07T00:00:00Z",
+            })
+          : null,
+    },
+  );
+  const { results, outcome } = await run([row(1), row(2)]);
+  assert.equal(results[0].status, "blocked");
+  assert.equal(outcome.stopped, true);
+  assert.ok(!api.calls.some(({ url }) => url.includes("/2/")));
 });

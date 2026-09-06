@@ -109,9 +109,9 @@ test("按 DMB document_id 与 CM id 对应，保留未入库、过期及 CM 独�
     result.pending.map(({ id, reason }) => [id, reason]),
     [
       [9, "missing_source"],
-      [4, "same_time"],
-      [3, "missing"],
       [2, "outdated"],
+      [3, "missing"],
+      [4, "same_time"],
     ],
   );
   assert.deepEqual(compareLibraries(new Map(), new Map()), {

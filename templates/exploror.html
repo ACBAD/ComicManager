@@ -10,10 +10,10 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23395349'/%3E%3Cpath d='M9 8h6v16H9zm9 0h5v16h-5z' fill='%23fff'/%3E%3C/svg%3E"
     />
     <link rel="stylesheet" href="/src/bootstrap.min.css" />
-    <link rel="stylesheet" href="/src/manager.css?v=batch-entry-1" />
+    <link rel="stylesheet" href="/src/manager.css?v=anchor-queue-1" />
     <link rel="stylesheet" href="/src/library.css?v=full-preload-1" />
     <script src="/src/bootstrap.bundle.min.js" defer></script>
-    <script src="/src/manager.js?v=latest-dmb-1" type="module"></script>
+    <script src="/src/manager.js?v=anchor-queue-1" type="module"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">跳转到主要内容</a>
@@ -25,7 +25,7 @@
       <nav class="main-nav" aria-label="主导航">
         <a id="nav-browse" href="#/" aria-current="page">漫画库</a>
         <a id="nav-entry" href="#/entry">漫画录入</a>
-        <a id="nav-pending" href="#/pending">未完成漫画</a>
+        <a id="nav-pending" href="#/pending">待处理队列</a>
         <a id="nav-tags" href="#/tags">标签管理</a>
       </nav>
       <div class="header-actions">
@@ -177,51 +177,6 @@
         aria-label="漫画阅读"
       ></section>
 
-      <section id="home-page" class="home-page" hidden>
-        <form id="entry-form" class="entry-form">
-          <label for="comic-id" class="form-label">DMB 文档 ID</label>
-          <div class="entry-input-row">
-            <span class="input-prefix" aria-hidden="true">#</span>
-            <input
-              class="form-control"
-              id="comic-id"
-              inputmode="numeric"
-              pattern="[0-9]+"
-              required
-              placeholder="输入归档文档 ID"
-              autocomplete="off"
-              aria-describedby="entry-hint"
-            />
-            <button class="btn btn-primary" type="submit">
-              读取归档 <span aria-hidden="true">→</span>
-            </button>
-          </div>
-          <p class="form-text" id="entry-hint">
-            使用 DMB 的文档 ID，进入预览后逐一确认标签映射。
-          </p>
-        </form>
-        <section class="archive-section" aria-labelledby="archive-heading">
-          <div class="section-heading">
-            <div>
-              <h2 id="archive-heading">最近归档</h2>
-              <p>从归档服务选择一部漫画开始整理</p>
-            </div>
-            <a class="btn btn-outline-primary" href="#/pending"
-              >批量自动录入 →</a
-            >
-            <button
-              class="btn btn-sm btn-quiet"
-              id="archive-refresh"
-              type="button"
-            >
-              刷新列表 ↻
-            </button>
-          </div>
-          <div id="archive-list" aria-live="polite"></div>
-          <div class="pagination-bar" id="archive-pagination"></div>
-        </section>
-      </section>
-
       <section
         id="pending-page"
         class="pending-page"
@@ -230,8 +185,8 @@
       >
         <div class="section-heading">
           <div>
-            <h1 id="pending-heading">未完成漫画</h1>
-            <p>CM 中已有记录，且更新时间晚于 DMB，才算完成。</p>
+            <h1 id="pending-heading">待处理队列</h1>
+            <p>按 DMB 更新时间从早到晚逐部处理，完成当前部后继续下一部。</p>
           </div>
           <div class="pending-scan-actions">
             <button
@@ -247,7 +202,14 @@
               class="btn btn-outline-primary"
               type="button"
             >
-              重新扫描
+              Anchor 扫描
+            </button>
+            <button
+              id="pending-full-scan"
+              class="btn btn-outline-secondary"
+              type="button"
+            >
+              全量扫描
             </button>
           </div>
         </div>
@@ -260,37 +222,18 @@
         <div id="pending-error"></div>
         <div id="pending-content" hidden>
           <div id="pending-stats" class="pending-stats"></div>
-          <fieldset id="pending-filters" class="pending-filters">
-            <legend class="visually-hidden">筛选未完成漫画</legend>
-            <div class="pending-search">
-              <label for="pending-search" class="form-label">搜索漫画</label>
-              <input
-                id="pending-search"
-                class="form-control"
-                type="search"
-                placeholder="标题、DMB ID 或来源 ID"
-              />
-            </div>
-            <div>
-              <label for="pending-reason" class="form-label">未完成原因</label>
-              <select id="pending-reason" class="form-select">
-                <option value="all">全部原因</option>
-              </select>
-            </div>
-            <div>
-              <label for="pending-status" class="form-label">DMB 状态</label>
-              <select id="pending-status" class="form-select">
-                <option value="all">全部状态</option>
-              </select>
-            </div>
-          </fieldset>
-          <section class="batch-entry" aria-label="批量自动录入">
+          <section
+            id="pending-next"
+            class="pending-next"
+            aria-label="下一部待处理漫画"
+          ></section>
+          <section class="batch-entry" aria-label="按队列自动录入">
             <div class="batch-entry-heading">
               <div>
-                <h2>批量自动录入</h2>
+                <h2>按队列自动录入</h2>
                 <p>
-                  处理当前筛选中的全部未入库漫画，涵盖所有分页。全部标签已映射则直接录入；仅缺
-                  group 标签则按原名创建并映射；其他情况跳过。
+                  从队首依次录入或更新，不受列表筛选影响。全部标签已映射则提交；仅缺
+                  group 标签则创建并映射；遇到其他情况停在当前部，等待手动处理。
                 </p>
               </div>
               <div class="batch-entry-actions">
@@ -320,6 +263,30 @@
               <ol id="batch-entry-results"></ol>
             </details>
           </section>
+          <fieldset id="pending-filters" class="pending-filters">
+            <legend class="visually-hidden">筛选未完成漫画</legend>
+            <div class="pending-search">
+              <label for="pending-search" class="form-label">搜索漫画</label>
+              <input
+                id="pending-search"
+                class="form-control"
+                type="search"
+                placeholder="标题、DMB ID 或来源 ID"
+              />
+            </div>
+            <div>
+              <label for="pending-reason" class="form-label">未完成原因</label>
+              <select id="pending-reason" class="form-select">
+                <option value="all">全部原因</option>
+              </select>
+            </div>
+            <div>
+              <label for="pending-status" class="form-label">DMB 状态</label>
+              <select id="pending-status" class="form-select">
+                <option value="all">全部状态</option>
+              </select>
+            </div>
+          </fieldset>
           <div id="pending-results" aria-live="polite"></div>
           <div id="pending-pagination" class="pagination-bar"></div>
         </div>

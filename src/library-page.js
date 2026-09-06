@@ -349,9 +349,6 @@ export function createLibraryPage({
   function readLink(comic) {
     return `#/read/${comic.id}?back=${encodeURIComponent(libraryHash(filters))}`;
   }
-  function entryLink(comic) {
-    return `#/entry/${comic.id}?from=library&back=${encodeURIComponent(libraryHash(filters))}`;
-  }
   function card(comic) {
     const cover = el(
       "a",
@@ -374,18 +371,7 @@ export function createLibraryPage({
       [
         cover,
         el("div", { class: "comic-card-body" }, [
-          el("div", { class: "comic-card-meta" }, [
-            source,
-            el(
-              "a",
-              {
-                href: entryLink(comic),
-                class: "comic-edit",
-                "aria-label": `整理漫画 #${comic.id}`,
-              },
-              "整理",
-            ),
-          ]),
+          el("div", { class: "comic-card-meta" }, [source]),
           el(
             "h2",
             {},
@@ -557,8 +543,8 @@ export function createLibraryPage({
         box.append(
           el(
             "a",
-            { href: entryLink(comic), class: "comic-tag-note" },
-            "有来源标签待整理",
+            { href: "#/pending", class: "comic-tag-note" },
+            "有来源标签待整理 · 查看队列",
           ),
         );
       if (!values.length) box.append(el("small", {}, "暂无标签"));

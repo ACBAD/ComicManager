@@ -171,10 +171,136 @@ export async function readDmbLibrary(
   return records;
 }
 
-export function compareLibraries(documents, comics) {
+export async function readDmbUntilAnchor(
+  base,
+  comics,
+  { signal, onProgress = () => {} } = {},
+) {
+  const documents = new Map();
+  let offset = 0,
+    anchor = null,
+    previousTime = null;
+  while (true) {
+    signal?.throwIfAborted();
+    const { data } = await dmb(base, "/v1/documents/query", {
+      method: "POST",
+      signal,
+      body: {
+        mode: "all",
+        limit: 100,
+        offset,
+        orderby: "updated_at",
+        order: "DESC",
+      },
+    });
+    signal?.throwIfAborted();
+    validateRecords(data, "document_id", "DMB");
+    for (const document of data) {
+      const time = timestampNanos(document.updated_at);
+      if (time === null)
+        throw new ApiError(
+          "DMB 更新时间无法比较，请使用全量扫描检查。",
+          "INVALID_RESPONSE",
+        );
+      if (
+        (previousTime !== null && time > previousTime) ||
+        documents.has(document.document_id)
+      )
+        throw new ApiError(
+          "DMB 排序或分页在扫描期间发生变化，请重新扫描。",
+          "LIBRARY_CHANGED",
+        );
+      // DMB 没有第二排序键；读完 anchor 所在的同时间组，不能在组内截断。
+      if (anchor && time < timestampNanos(anchor.updated_at))
+        return { documents, anchor };
+      previousTime = time;
+      const summary = documentSummary(document);
+      documents.set(document.document_id, summary);
+      if (
+        !anchor &&
+        completionReason(summary, comics.get(document.document_id)) === null
+      )
+        anchor = summary;
+    }
+    onProgress({ loaded: documents.size, anchor });
+    if (data.length < 100) return { documents, anchor };
+    offset += data.length;
+  }
+}
+
+export function oldestFirst(a, b) {
+  const left = timestampNanos(a.document?.updated_at);
+  const right = timestampNanos(b.document?.updated_at);
+  // 活动来源的时间异常必须先处理，不能让它悄悄落在队尾。
+  if (left === null || right === null)
+    return left === right ? a.id - b.id : left === null ? -1 : 1;
+  return left < right ? -1 : left > right ? 1 : a.id - b.id;
+}
+
+export function entryQueue(records) {
+  // 已删除、已清理和 CM 独有记录只供全量核对，不在 DMB 活动扫描范围内。
+  return records
+    .filter(
+      (row) =>
+        row.document && !["deleted", "purged"].includes(row.document.status),
+    )
+    .sort(oldestFirst);
+}
+
+export function entryBlockReason(row) {
+  if (!row?.document) return "来源缺失";
+  if (["deleted", "purged"].includes(row.document.status))
+    return "来源已删除或清理";
+  if (timestampNanos(row.document.updated_at) === null)
+    return "来源更新时间无法比较，请先修复来源数据";
+  if (row.document.source !== "hitomi") return "暂不支持此来源";
+  if (!row.document.has_metadata) return "等待来源数据";
+  return null;
+}
+
+export async function readEntryCompletion(base, id, title) {
+  // commit 返回的是来源模型，时间可能为空；通过现有查询接口读取落库后的原始 Comic。
+  const local = async () => {
+    for (let offset = 0; ; offset += 100) {
+      const { data } = await api("/comics/query", {
+        method: "POST",
+        body: { title, title_match: "exact", limit: 100, offset },
+      });
+      validateRecords(data, "id", "CM");
+      const comic = data.find((row) => row.id === id);
+      if (comic) return comic;
+      if (data.length < 100)
+        throw new ApiError(
+          "漫画已提交，但未能确认 CM 记录，请重新扫描。",
+          "ENTRY_NOT_CONFIRMED",
+        );
+    }
+  };
+  const [comic, source] = await Promise.all([
+    local(),
+    dmb(base, `/v1/documents/${id}`),
+  ]);
+  if (source.data?.document_id !== id)
+    throw new ApiError(
+      "DMB 返回了不同的文档，请重新扫描。",
+      "INVALID_RESPONSE",
+    );
+  return { comic, document: documentSummary(source.data) };
+}
+
+// 每次扫描合并新结果，保留已经在队列中等待处理的记录。
+export function retainPendingDocuments(documents, previous, comics) {
+  const merged = new Map(documents);
+  for (const [id, document] of previous || [])
+    if (!merged.has(id) && completionReason(document, comics.get(id)) !== null)
+      merged.set(id, document);
+  return merged;
+}
+
+export function compareLibraries(documents, comics, { full = true } = {}) {
   const pending = [];
   let completed = 0;
-  const ids = new Set([...documents.keys(), ...comics.keys()]);
+  const ids = new Set([...documents.keys(), ...(full ? comics.keys() : [])]);
   for (const id of ids) {
     const document = documents.get(id),
       comic = comics.get(id);
@@ -182,7 +308,7 @@ export function compareLibraries(documents, comics) {
     if (reason === null) completed++;
     else pending.push({ id, document, comic, reason });
   }
-  pending.sort((a, b) => b.id - a.id);
+  pending.sort(oldestFirst);
   return { pending, completed, dmbTotal: documents.size, cmTotal: comics.size };
 }
 

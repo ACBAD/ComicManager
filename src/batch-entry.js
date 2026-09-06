@@ -9,19 +9,17 @@ import {
   exactMapping,
   ensureGeneric,
 } from "./entry-api.js";
+import {
+  entryQueue,
+  entryBlockReason,
+  completionReason,
+  readEntryCompletion,
+} from "./pending-comics.js?v=anchor-queue-1";
 
-export function batchEntryCandidates(records) {
-  return records.filter((row) => !row.comic && row.document);
-}
-
-async function enterComic(row, groups) {
-  const skipped = (reason) => ({ status: "skipped", reason });
-  if (row.comic) return skipped("已经入库");
-  if (!row.document) return skipped("来源缺失");
-  if (["deleted", "purged"].includes(row.document.status))
-    return skipped("来源已删除或清理");
-  if (row.document.source !== "hitomi") return skipped("暂不支持此来源");
-  if (!row.document.has_metadata) return skipped("缺少来源数据");
+async function enterComic(row, groups, base) {
+  const blocked = (reason) => ({ status: "blocked", reason });
+  const unavailable = entryBlockReason(row);
+  if (unavailable) return blocked(unavailable);
 
   const { data: preview } = await api(`/comics/${row.id}/preview`);
   const tags = [
@@ -41,9 +39,9 @@ async function enterComic(row, groups) {
     .filter((item) => !item.mapping)
     .map((item) => item.tag);
   const other = missing.filter((tag) => inferGroup(tag, groups) !== "group");
-  if (other.length) return skipped(`${other.length} 个非 group 类标签未映射`);
+  if (other.length) return blocked(`${other.length} 个非 group 类标签未映射`);
   if (missing.some((tag) => !tag.origin_name.trim()))
-    return skipped("group 标签缺少名称");
+    return blocked("group 标签缺少名称");
 
   let created = 0;
   for (const tag of missing) {
@@ -61,10 +59,19 @@ async function enterComic(row, groups) {
         "SPECIFIC_TAG_MAPPING_CONFLICT",
       );
   }
-  // 只新增，其他会话已经录入时由服务端拒绝覆盖。
-  await api(`/comics/${row.id}/commit`, { method: "POST" });
+  const { data } = await api(
+    `/comics/${row.id}/commit${row.comic ? "?allow_override=true" : ""}`,
+    { method: "POST" },
+  );
+  const persisted = await readEntryCompletion(base, row.id, data.title);
+  if (completionReason(persisted.document, persisted.comic) !== null)
+    return {
+      ...blocked("已提交，但 CM 更新时间尚未晚于 DMB，当前部仍留在队列"),
+      ...persisted,
+    };
   return {
     status: "success",
+    ...persisted,
     reason: missing.length
       ? `补齐 ${missing.length} 条 group 映射后录入，新建 ${created} 个通用标签`
       : "全部标签已映射，直接录入",
@@ -75,29 +82,30 @@ export async function runBatchEntry(
   records,
   {
     groups,
+    dmbUrl,
     shouldStop = () => false,
     onCurrent = () => {},
     onResult = () => {},
   },
 ) {
   let processed = 0;
-  for (const row of records) {
+  for (const row of entryQueue(records)) {
     if (shouldStop()) return { stopped: true, processed };
     onCurrent(row);
     let result;
     let fatal = false;
     try {
-      result = await enterComic(row, groups);
+      result = await enterComic(row, groups, dmbUrl);
     } catch (error) {
-      const skip = {
+      const blockedReason = {
         COMIC_ALREADY_EXISTS: "已被其他操作录入，未覆盖",
-        UNMAPPED_SPECIFIC_TAGS: "映射已变化，本次跳过",
+        UNMAPPED_SPECIFIC_TAGS: "映射已变化，需要手动处理当前部",
         SOURCE_DOCUMENT_NOT_FOUND: "来源已不存在",
         SPECIFIC_TAG_MAPPING_CONFLICT: "标签映射冲突，未提交",
       }[error.code];
       result = {
-        status: skip ? "skipped" : "failed",
-        reason: skip || error.message,
+        status: blockedReason ? "blocked" : "failed",
+        reason: blockedReason || error.message,
       };
       fatal = [401, 403].includes(error.status);
     }
@@ -112,6 +120,12 @@ export async function runBatchEntry(
         stopped: true,
         processed,
         reason: "身份验证或权限不足，已停止批量录入。",
+      };
+    if (result.status !== "success")
+      return {
+        stopped: true,
+        processed,
+        reason: `已停在 #${row.id}：${result.reason}。处理完成后再继续。`,
       };
   }
   return { stopped: false, processed };

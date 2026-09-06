@@ -350,6 +350,36 @@ small,
   table-layout: fixed;
   font-size: 12px;
 }
+.pending-next {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1.25rem;
+  margin: 1.25rem 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f0f4f1;
+}
+.pending-next > div {
+  flex: 1 1 20rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pending-next h2 {
+  font-size: 1rem;
+  margin: 0 0 0.6rem;
+}
+.pending-next p {
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.pending-next a[aria-disabled="true"] {
+  pointer-events: none;
+  opacity: 0.5;
+}
 .batch-entry {
   border: 1px solid var(--line);
   border-radius: 9px;
