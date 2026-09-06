@@ -23,13 +23,7 @@ async function enterComic(row, groups) {
   if (row.document.source !== "hitomi") return skipped("暂不支持此来源");
   if (!row.document.has_metadata) return skipped("缺少来源数据");
 
-  const { data: preview, headers } = await api(`/comics/${row.id}/preview`);
-  const revision = headers.get("ETag")?.replace(/^"|"$/g, "");
-  if (!/^sha256:[0-9a-f]{64}$/.test(revision || ""))
-    throw new ApiError(
-      "预览缺少有效的来源版本，未提交。",
-      "MISSING_SOURCE_REVISION",
-    );
+  const { data: preview } = await api(`/comics/${row.id}/preview`);
   const tags = [
     ...new Map(preview.comic_tags.map((tag) => [stableKey(tag), tag])).values(),
   ];
@@ -68,7 +62,7 @@ async function enterComic(row, groups) {
       );
   }
   // 只新增，其他会话已经录入时由服务端拒绝覆盖。
-  await query(`/comics/${row.id}/commit`, { source_revision: revision });
+  await api(`/comics/${row.id}/commit`, { method: "POST" });
   return {
     status: "success",
     reason: missing.length
@@ -97,7 +91,6 @@ export async function runBatchEntry(
     } catch (error) {
       const skip = {
         COMIC_ALREADY_EXISTS: "已被其他操作录入，未覆盖",
-        SOURCE_META_CHANGED: "来源已变化，本次跳过",
         UNMAPPED_SPECIFIC_TAGS: "映射已变化，本次跳过",
         SOURCE_DOCUMENT_NOT_FOUND: "来源已不存在",
         SPECIFIC_TAG_MAPPING_CONFLICT: "标签映射冲突，未提交",

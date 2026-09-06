@@ -208,24 +208,18 @@ JSON 字段保持 Comic 原定义：id、title、authors、comic_tags、series_n
 volume_number、updated_at。comic_tags 是原始 SpecificTag 数组，不添加映射、
 来源摘要、inferred_group 或页面统计。额外来源信息由客户端按需读取 DMB。
 
-响应包含 `Cache-Control: no-store`。保留来源版本校验，版本通过标准 ETag 响应头传递，
-例如 `ETag: "sha256:…"`，不混入 Comic 数据。
-摘要覆盖 DMB 的 document_id、source、source_document_id、source_meta，
-不受 JSON 字段顺序和下载进度影响。
+响应包含 `Cache-Control: no-store`。预览不附加来源版本，客户端不依赖 ETag。
 
 ### 录入
 
 `POST /api/comics/{comic_id}/commit?allow_override=false`
 
-```json
-{"source_revision": "sha256:..."}
-```
-
-source_revision 取自预览的 ETag，去掉 HTTP 引号，格式为 sha256: 加 64 位十六进制摘要。
-服务端重新读取来源并校验版本、完整标签身份及映射；不接收客户端提供的 Comic 或映射决定。
+无需请求体。服务端每次提交都重新读取 DMB，以当时最新的来源数据构造 Comic，
+校验完整标签身份及映射；不使用客户端提供的 Comic 或映射决定。
+即使标题、作者或已映射标签在预览后发生变化，也直接保存提交时读取到的内容。
 成功返回 201 和原始 Comic，不再返回摘要或标签计数。
 
-来源变化返回 409 SOURCE_META_CHANGED；缺失映射返回 409 UNMAPPED_SPECIFIC_TAGS，
+最新来源中存在缺失映射时返回 409 UNMAPPED_SPECIFIC_TAGS，
 其 error.details.specific_tags 为缺失的原始 SpecificTag 数组。
 已经录入且未允许覆盖时返回 409 COMIC_ALREADY_EXISTS。
 
@@ -247,7 +241,7 @@ allow_override=true 时，在单一事务中替换漫画及作者、标签关联
 | 401 / 403 | AUTHENTICATION_REQUIRED / FORBIDDEN |
 | 404 | GENERIC_TAG_NOT_FOUND / SPECIFIC_TAG_NOT_FOUND / SOURCE_DOCUMENT_NOT_FOUND |
 | 409 | GENERIC_TAG_EXISTS / SPECIFIC_TAG_MAPPING_CONFLICT / COMIC_ALREADY_EXISTS |
-| 409 | SOURCE_META_CHANGED / UNMAPPED_SPECIFIC_TAGS |
+| 409 | UNMAPPED_SPECIFIC_TAGS |
 | 422 | INVALID_REQUEST / INVALID_SPECIFIC_TAG / INVALID_SOURCE_METADATA / META_SCHEMA_VIOLATION |
 | 502 / 504 | SOURCE_SERVICE_ERROR / SOURCE_SERVICE_TIMEOUT |
 

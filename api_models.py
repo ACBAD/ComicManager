@@ -63,10 +63,6 @@ class SourceDocument(BaseModel):
     source_meta: dict[str, Any] = Field(min_length=1)
 
 
-class ComicCommitRequest(RequestModel):
-    source_revision: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
-
-
 class ComicQuery(RequestModel):
     generic_tag_ids: list[Annotated[int, Field(gt=0, le=2**63 - 1)]] = Field(
         default_factory=list, max_length=100,

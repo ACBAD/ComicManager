@@ -1,5 +1,3 @@
-import hashlib
-import json
 import os
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
@@ -334,7 +332,7 @@ def query_comics(
 
 def fetch_comic_source(
     comic_id: int, comic_manager: comics.ComicManager, dmb_client: DMBClient,
-) -> tuple[comics.Comic, str]:
+) -> comics.Comic:
     try:
         comic_data = dmb_client.fetch_comic_info(str(comic_id))
     except httpx.HTTPStatusError as error:
@@ -353,14 +351,9 @@ def fetch_comic_source(
         if document.document_id != comic_id:
             raise ValueError("DMB returned a different document_id")
         comic = comic_manager.create_comic(document.source, comic_id, document.source_meta)
-        canonical = json.dumps(
-            document.model_dump(mode="json"),
-            sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False,
-        )
     except (ValueError, TypeError, KeyError, AttributeError) as error:
         raise APIError(422, "INVALID_SOURCE_METADATA", "来源 metadata 无法解析为漫画", reason=str(error)) from error
-    revision = "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-    return comic, revision
+    return comic
 
 
 @comics_api.get('/{comic_id}/preview',
@@ -370,9 +363,8 @@ def get_comic_preview(
     comic_id: int, response: fastapi.Response,
     comic_manager: ComicManagerDep, dmb_client: DMBClientDep,
 ) -> comics.Comic:
-    comic, revision = fetch_comic_source(comic_id, comic_manager, dmb_client)
+    comic = fetch_comic_source(comic_id, comic_manager, dmb_client)
     response.headers['Cache-Control'] = 'no-store'
-    response.headers['ETag'] = f'"{revision}"'
     return comic
 
 @comics_api.post('/{comic_id}/commit',
@@ -380,12 +372,10 @@ def get_comic_preview(
                  dependencies=[fastapi.Depends(Authoricator([UserAbilities.CREATE_DOCUMENT]))],
                  name='comics.commit_comic')
 def commit_comic(
-    comic_id: int, payload: api.ComicCommitRequest,
+    comic_id: int,
     comic_manager: ComicManagerDep, dmb_client: DMBClientDep, allow_override: bool = False,
 ) -> comics.Comic:
-    comic, revision = fetch_comic_source(comic_id, comic_manager, dmb_client)
-    if revision != payload.source_revision:
-        raise APIError(409, "SOURCE_META_CHANGED", "来源 metadata 已变化，请重新预览", source_revision=revision)
+    comic = fetch_comic_source(comic_id, comic_manager, dmb_client)
     missing = comic_manager.get_missing_tags(comic)
     if missing:
         raise APIError(409, "UNMAPPED_SPECIFIC_TAGS", "存在尚未映射的来源标签", specific_tags=missing)

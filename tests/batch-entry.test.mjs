@@ -5,7 +5,6 @@ import { stableKey, genericKey } from "../src/entry-api.js";
 import { filterPending } from "../src/pending-comics.js";
 
 const groups = ["tag", "group", "character"];
-const revision = `sha256:${"a".repeat(64)}`;
 const tag = (name, group = "tags", extra = {}) => ({
   site: "hitomi",
   group,
@@ -54,11 +53,10 @@ function server(t, documents, { mapped = [], generics = [], intercept } = {}) {
     if (intercepted) return intercepted;
     let match;
     if ((match = url.match(/^\/api\/comics\/(\d+)\/preview$/)))
-      return response(
-        { id: Number(match[1]), comic_tags: documents[match[1]] },
-        200,
-        { ETag: `"${revision}"` },
-      );
+      return response({
+        id: Number(match[1]),
+        comic_tags: documents[match[1]],
+      });
     if (url === "/api/tags/specific/query") {
       const mapping = mappings.get(stableKey(body.specific_tag));
       return response(mapping ? [mapping.id] : []);
@@ -153,8 +151,7 @@ test("整批依次直接提交、创建 group、复用同名 group、跳过混�
     commits.map(({ url }) => url),
     [1, 2, 3, 5].map((id) => `/api/comics/${id}/commit`),
   );
-  for (const call of commits)
-    assert.deepEqual(call.body, { source_revision: revision });
+  for (const call of commits) assert.equal(call.body, null);
   assert.equal(
     api.writes().some(({ body }) => body?.name === "must not create"),
     false,
@@ -201,6 +198,28 @@ test("非 group 和未知来源分类跳过，整部没有标签写入或 commit
   const { results } = await run([row(1), row(2)]);
   assert.ok(results.every((result) => result.status === "skipped"));
   assert.deepEqual(api.writes(), []);
+});
+
+test("弱 ETag 或缺少 ETag 都不影响批量录入", async (t) => {
+  const api = server(
+    t,
+    { 1: [], 2: [] },
+    {
+      intercept: (url) =>
+        url === "/api/comics/1/preview"
+          ? response({ id: 1, comic_tags: [] }, 200, {
+              ETag: 'W/"proxy-value"',
+            })
+          : null,
+    },
+  );
+  const { results } = await run([row(1), row(2)]);
+  assert.ok(results.every((result) => result.status === "success"));
+  assert.ok(
+    api.calls
+      .filter(({ url }) => url.endsWith("/commit"))
+      .every(({ body }) => body === null),
+  );
 });
 
 test("标签查询失败不能当成未映射来创建，失败后继续下一部", async (t) => {
@@ -251,14 +270,14 @@ test("group 映射冲突时当前部不提交，后续漫画仍继续", async (t
   );
 });
 
-test("来源版本变化或并发已入库都跳过，不自动刷新重试或覆盖", async (t) => {
+test("最新来源存在未映射标签或已并发入库时跳过，不自动重试或覆盖", async (t) => {
   const api = server(
     t,
     { 1: [], 2: [], 3: [] },
     {
       intercept: (url) =>
         url === "/api/comics/1/commit"
-          ? failure("SOURCE_META_CHANGED")
+          ? failure("UNMAPPED_SPECIFIC_TAGS")
           : url === "/api/comics/2/commit"
             ? failure("COMIC_ALREADY_EXISTS")
             : null,

@@ -29,7 +29,10 @@ import {
 import { createLibraryPage } from "./library-page.js";
 import { createComicReader } from "./comic-reader.js?v=full-preload-1";
 import { libraryReturn } from "./comic-library.js";
-import { batchEntryCandidates, runBatchEntry } from "./batch-entry.js";
+import {
+  batchEntryCandidates,
+  runBatchEntry,
+} from "./batch-entry.js?v=latest-dmb-1";
 
 const $ = (id) => document.getElementById(id);
 const groupLabel = (group) => `${GROUP_NAMES[group] || group} · ${group}`;
@@ -49,7 +52,6 @@ const state = {
   preview: null,
   source: null,
   sourceError: null,
-  revision: null,
   items: [],
   active: null,
   pendingWrites: 0,
@@ -948,14 +950,7 @@ async function loadEntry(
       comicLookup,
     ]);
     if (version !== routeVersion) return;
-    const revision = preview.headers.get("ETag")?.replace(/^"|"$/g, "");
-    if (!/^sha256:[0-9a-f]{64}$/.test(revision || ""))
-      throw new ApiError(
-        "预览缺少有效的来源版本，无法提交。",
-        "MISSING_SOURCE_REVISION",
-      );
     state.preview = preview.data;
-    state.revision = revision;
     state.source = source.data || null;
     state.sourceError = source.error || null;
     state.existingComic = comicLibrary?.get(id) || null;
@@ -1959,14 +1954,11 @@ async function commitComic() {
   state.message = null;
   renderMessage();
   renderEntry();
-  let reload = false;
   let missing = null;
   try {
-    const { data } = await query(
+    const { data } = await api(
       `/comics/${state.comicId}/commit${state.existingComic ? "?allow_override=true" : ""}`,
-      {
-        source_revision: state.revision,
-      },
+      { method: "POST" },
     );
     state.result = data;
     state.phase = "success";
@@ -1977,8 +1969,7 @@ async function commitComic() {
     if (error.code === "COMIC_ALREADY_EXISTS") {
       state.phase = "already-exists";
       pending.needsCMRefresh = true;
-    } else if (error.code === "SOURCE_META_CHANGED") reload = true;
-    else if (error.code === "UNMAPPED_SPECIFIC_TAGS") {
+    } else if (error.code === "UNMAPPED_SPECIFIC_TAGS") {
       missing = error.details.specific_tags || [];
       state.phase = "resolving";
       message("部分映射已失效，正在重新查询，请确认后再录入。");
@@ -1990,13 +1981,6 @@ async function commitComic() {
     state.pendingWrites--;
     renderEntry();
   }
-  if (reload)
-    await loadEntry(
-      state.comicId,
-      ++routeVersion,
-      "来源数据已更新，已重新读取预览。请再次确认标签。",
-      true,
-    );
   if (missing) {
     const affected = state.items.filter((item) =>
       missing.some((tag) => stableKey(tag) === item.key),

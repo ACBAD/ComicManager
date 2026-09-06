@@ -43,7 +43,6 @@ const state = {
   comicId: null,
   groups: [],
   preview: null,
-  sourceRevision: null, // 来自 preview 的 ETag 响应头，不在 Comic 模型中
   tagItems: [],
   activeIndex: null,
   pendingRequestCount: 0,
@@ -151,16 +150,11 @@ preview 后的 exact 查询采用有限并发，不使用无上限 `Promise.all(
 该错误不能由普通用户在页面中修复。阻断当前标签，展示 site、origin_name、
 服务端 schema hash 和模型 schema hash，并要求维护者介入。
 
-### `SOURCE_META_CHANGED`
+### 提交时的来源数据
 
-Comic commit 收到该错误后：
-
-1. 清除当前 preview 和本地标签状态。
-2. 重新调用 preview。
-3. 重新执行 exact 查询。
-4. 提示用户来源 metadata 已更新。
-
-已写入数据库的 Tag 映射不会回滚，并会在新的 exact 查询中自然复用。
+commit 不需要预览版本，始终从 DMB 重新读取最新 metadata。标题、作者和已映射标签的变化
+直接使用最新内容；如新增标签尚未映射，则按 `UNMAPPED_SPECIFIC_TAGS` 处理。
+已写入数据库的 Tag 映射不会因漫画提交失败回滚，重新精确查询时继续复用。
 
 ### `UNMAPPED_SPECIFIC_TAGS`
 
