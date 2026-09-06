@@ -88,6 +88,21 @@ class ComicQueryTests(unittest.TestCase):
         with self.conn:
             self.conn.execute('DELETE FROM comics')
         self.assert_query({}, [])
+        self.assert_query({'order': 'DESC'}, [])
+
+    def test_id_order_applies_before_pagination_and_listing_stays_ascending(self):
+        ascending = [7, 11, 23, 42, 55, 91, 99, 101]
+        self.assert_query({'order': 'ASC'}, ascending)
+        descending = list(reversed(ascending))
+        self.assert_query({'order': 'DESC'}, descending)
+        for offset in (0, 3, 6, 9):
+            with self.subTest(offset=offset):
+                self.assert_query({'order': 'DESC', 'limit': 3, 'offset': offset},
+                                  descending[offset:offset + 3], total=8)
+        listing = self.client.get('/api/comics?limit=3&offset=3')
+        self.assertEqual(listing.status_code, 200, listing.text)
+        self.assertEqual([comic['id'] for comic in listing.json()], ascending[3:6])
+        self.assertEqual(listing.headers['X-Total-Count'], '8')
 
     def test_title_matches_are_literal_and_case_sensitive(self):
         for payload, expected in (
@@ -159,6 +174,10 @@ class ComicQueryTests(unittest.TestCase):
         for offset, expected in ((0, [7]), (1, [11]), (2, [23]), (3, []), (99, []), (2**63 - 1, [])):
             with self.subTest(offset=offset):
                 self.assert_query({**filters, 'limit': 1, 'offset': offset}, expected, total=3)
+        for offset, expected in ((0, [23]), (1, [11]), (2, [7]), (3, [])):
+            with self.subTest(order='DESC', offset=offset):
+                self.assert_query({**filters, 'title': 'Moon', 'order': 'DESC',
+                                   'limit': 1, 'offset': offset}, expected, total=3)
 
     def test_default_and_maximum_page_sizes(self):
         with self.conn:
@@ -167,12 +186,16 @@ class ComicQueryTests(unittest.TestCase):
         self.assert_query({'title': '分页测试'}, list(range(201, 251)), total=103)
         self.assert_query({'title': '分页测试', 'limit': 100}, list(range(201, 301)), total=103)
         self.assert_query({'title': '分页测试', 'limit': 100, 'offset': 100}, [301, 302, 303], total=103)
+        self.assert_query({'title': '分页测试', 'order': 'DESC', 'limit': 100},
+                          list(range(303, 203, -1)), total=103)
+        self.assert_query({'title': '分页测试', 'order': 'DESC', 'limit': 100, 'offset': 100},
+                          [203, 202, 201], total=103)
 
     def test_returns_complete_raw_model_without_dmb_or_database_writes(self):
         before = hashlib.sha256(self.db_path.read_bytes()).digest()
         with patch.object(app_module.DMBClient, 'fetch_comic_info') as fetch_source:
             response = self.assert_query({'title': '月光', 'author_name': 'Alice',
-                                          'generic_tag_ids': [self.tag_ids['cat']]}, [7])
+                                          'generic_tag_ids': [self.tag_ids['cat']], 'order': 'DESC'}, [7])
         self.assertEqual(response.json(), [{
             'id': 7, 'title': '月光 Moon', 'authors': ['Alice', 'Alicia', '乙'],
             'comic_tags': [tag.model_dump(mode='json') for tag in self.first_tags],
@@ -196,6 +219,8 @@ class ComicQueryTests(unittest.TestCase):
             {'generic_tag_ids': [2**63]}, {'generic_tag_ids': ['invalid']}, {'generic_tag_ids': [1.5]},
             {'generic_tag_ids': [1] * 101}, {'generic_tag_ids': '1'}, {'generic_tag_ids': None},
             {'tag_match': 'none'}, {'title_match': 'regex'}, {'author_match': 'regex'},
+            {'order': 'desc'}, {'order': ''}, {'order': None}, {'order': 1}, {'order': ['DESC']},
+            {'order': 'DESC; DROP TABLE comics; --'},
             {'title': ''}, {'title': '  \n'}, {'title': 123}, {'author_name': ''}, {'author_name': '\t'},
             {'limit': 0}, {'limit': 101}, {'limit': 1.5}, {'offset': -1}, {'offset': 0.5}, {'offset': 2**63},
         ):
@@ -206,6 +231,13 @@ class ComicQueryTests(unittest.TestCase):
         response = self.client.post('/api/comics/query')
         self.assertEqual(response.status_code, 422)
         self.assertEqual(response.json()['error']['code'], 'INVALID_REQUEST')
+
+    def test_manager_rejects_invalid_order_before_running_sql(self):
+        for order in ('desc', '', None, 'DESC; DROP TABLE comics; --'):
+            with self.subTest(order=order):
+                with self.assertRaises(ValueError):
+                    self.manager.query_comics(order=order)
+        self.assert_query({'order': 'DESC', 'limit': 1}, [101], total=8)
 
     def test_requires_login_but_no_creation_permission(self):
         self.assert_query({'author_name': 'Alice'}, [7, 11])
@@ -218,6 +250,7 @@ class ComicQueryTests(unittest.TestCase):
 
     def test_concurrent_requests_keep_filters_and_connections_independent(self):
         cases = [({'title': 'Moon'}, [7, 11, 23]), ({'author_name': '乙'}, [7, 55]),
+                 ({'title': 'Moon', 'order': 'DESC'}, [23, 11, 7]),
                  ({'generic_tag_ids': [self.tag_ids['cat']]}, [7, 23]), ({'title': 'missing'}, [])]
         with ThreadPoolExecutor(max_workers=4) as executor:
             responses = list(executor.map(

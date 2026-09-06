@@ -98,11 +98,14 @@ class ComicManager:
         author_match: Literal["exact", "prefix", "contains"] = "exact",
         title: str | None = None,
         title_match: Literal["exact", "prefix", "contains"] = "contains",
+        order: Literal["ASC", "DESC"] = "ASC",
         limit: int = 50, offset: int = 0,
     ) -> tuple[list[Comic], int]:
-        """组合筛选本地漫画，按 ID 升序返回原始模型和筛选后的分页前总数。"""
+        """组合筛选本地漫画，按指定 ID 顺序返回原始模型和筛选后的分页前总数。"""
         if tag_match not in ("all", "any"):
             raise ValueError(f"Unsupported tag match: {tag_match}")
+        if order not in ("ASC", "DESC"):
+            raise ValueError(f"Unsupported comic order: {order}")
         conditions = []
         params: list[str | int] = []
         if title is not None:
@@ -137,7 +140,7 @@ class ComicManager:
             total = self.conn.execute(f"SELECT COUNT(*) FROM comics c{where}", params).fetchone()[0]
             rows = self.conn.execute(
                 "SELECT c.id, c.title, c.series_name, c.volume_number, c.updated_at "
-                f"FROM comics c{where} ORDER BY c.id ASC LIMIT ? OFFSET ?", [*params, limit, offset],
+                f"FROM comics c{where} ORDER BY c.id {order} LIMIT ? OFFSET ?", [*params, limit, offset],
             ).fetchall()
             return [self._comic_from_row(row) for row in rows], total
         finally:

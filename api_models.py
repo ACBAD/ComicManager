@@ -72,5 +72,6 @@ class ComicQuery(RequestModel):
     author_match: Literal["exact", "prefix", "contains"] = "exact"
     title: str | None = Field(default=None, min_length=1, pattern=r"\S")
     title_match: Literal["exact", "prefix", "contains"] = "contains"
+    order: Literal["ASC", "DESC"] = "ASC"
     limit: int = Field(default=50, ge=1, le=100)
     offset: int = Field(default=0, ge=0, le=2**63 - 1)
