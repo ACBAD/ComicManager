@@ -350,6 +350,80 @@ small,
   table-layout: fixed;
   font-size: 12px;
 }
+.batch-entry {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 18px;
+  margin-bottom: 22px;
+}
+.batch-entry-heading,
+.batch-entry-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.batch-entry-heading {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.batch-entry-heading > div:first-child {
+  flex: 1;
+  min-width: 220px;
+}
+.batch-entry h2 {
+  font-size: 16px;
+  margin: 0 0 7px;
+}
+.batch-entry p {
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+.batch-entry-heading p {
+  color: var(--muted);
+  max-width: 750px;
+  line-height: 1.8;
+}
+.batch-entry p:empty {
+  display: none;
+}
+.batch-entry-actions {
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.batch-entry details {
+  margin-top: 12px;
+  font-size: 12px;
+}
+#batch-entry-notice {
+  color: #9b542f;
+}
+#batch-entry-results {
+  max-height: 290px;
+  overflow: auto;
+  padding: 0;
+  margin: 8px 0 0;
+  list-style: none;
+}
+.batch-result {
+  display: grid;
+  grid-template-columns: 45px minmax(0, 1fr);
+  gap: 3px 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
+}
+.batch-result a {
+  overflow-wrap: anywhere;
+}
+.batch-result small {
+  grid-column: 2;
+  color: var(--muted);
+}
+.batch-result.success .batch-result-status {
+  color: var(--accent);
+}
+.batch-result.failed .batch-result-status {
+  color: #a53c35;
+}
 .pending-table th {
   color: var(--muted);
   font-weight: 500;

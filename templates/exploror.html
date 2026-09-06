@@ -10,10 +10,10 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23395349'/%3E%3Cpath d='M9 8h6v16H9zm9 0h5v16h-5z' fill='%23fff'/%3E%3C/svg%3E"
     />
     <link rel="stylesheet" href="/src/bootstrap.min.css" />
-    <link rel="stylesheet" href="/src/manager.css?v=image-route-1" />
+    <link rel="stylesheet" href="/src/manager.css?v=batch-entry-1" />
     <link rel="stylesheet" href="/src/library.css?v=full-preload-1" />
     <script src="/src/bootstrap.bundle.min.js" defer></script>
-    <script src="/src/manager.js?v=full-preload-1" type="module"></script>
+    <script src="/src/manager.js?v=batch-entry-1" type="module"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">跳转到主要内容</a>
@@ -206,6 +206,9 @@
               <h2 id="archive-heading">最近归档</h2>
               <p>从归档服务选择一部漫画开始整理</p>
             </div>
+            <a class="btn btn-outline-primary" href="#/pending"
+              >批量自动录入 →</a
+            >
             <button
               class="btn btn-sm btn-quiet"
               id="archive-refresh"
@@ -281,6 +284,42 @@
               </select>
             </div>
           </fieldset>
+          <section class="batch-entry" aria-label="批量自动录入">
+            <div class="batch-entry-heading">
+              <div>
+                <h2>批量自动录入</h2>
+                <p>
+                  处理当前筛选中的全部未入库漫画，涵盖所有分页。全部标签已映射则直接录入；仅缺
+                  group 标签则按原名创建并映射；其他情况跳过。
+                </p>
+              </div>
+              <div class="batch-entry-actions">
+                <button
+                  id="batch-entry-start"
+                  class="btn btn-primary"
+                  type="button"
+                  disabled
+                >
+                  自动录入
+                </button>
+                <button
+                  id="batch-entry-stop"
+                  class="btn btn-outline-secondary"
+                  type="button"
+                  hidden
+                >
+                  停止录入
+                </button>
+              </div>
+            </div>
+            <p id="batch-entry-progress" role="status" hidden></p>
+            <p id="batch-entry-current"></p>
+            <p id="batch-entry-notice" role="alert"></p>
+            <details id="batch-entry-details" hidden>
+              <summary id="batch-entry-details-label">查看逐部结果</summary>
+              <ol id="batch-entry-results"></ol>
+            </details>
+          </section>
           <div id="pending-results" aria-live="polite"></div>
           <div id="pending-pagination" class="pagination-bar"></div>
         </div>

@@ -29,6 +29,7 @@ import {
 import { createLibraryPage } from "./library-page.js";
 import { createComicReader } from "./comic-reader.js?v=full-preload-1";
 import { libraryReturn } from "./comic-library.js";
+import { batchEntryCandidates, runBatchEntry } from "./batch-entry.js";
 
 const $ = (id) => document.getElementById(id);
 const groupLabel = (group) => `${GROUP_NAMES[group] || group} · ${group}`;
@@ -76,6 +77,15 @@ const pending = {
   search: "",
   reason: "all",
   status: "all",
+};
+const batchEntry = {
+  running: false,
+  stopRequested: false,
+  phase: "idle",
+  total: 0,
+  current: null,
+  results: [],
+  notice: null,
 };
 let dmbUrl = DEFAULT_DMB_URL;
 let imageRoute = "proxy";
@@ -257,7 +267,11 @@ async function route() {
   if (state.hash !== null && hash !== state.hash) {
     if (state.pendingWrites || state.phase === "committing") {
       history.replaceState(null, "", state.hash);
-      message("正在保存，请等待操作完成。");
+      message(
+        batchEntry.running
+          ? "正在批量录入，可先点击“停止录入”，完成当前漫画后即可离开。"
+          : "正在保存，请等待操作完成。",
+      );
       return;
     }
     if (
@@ -456,6 +470,7 @@ function timeNode(value, absent = "时间缺失") {
 }
 
 async function scanPending(localOnly = false) {
+  if (batchEntry.running) return;
   pending.controller?.abort();
   const controller = (pending.controller = new AbortController());
   const signal = AbortSignal.any([controller.signal, pageController.signal]);
@@ -747,6 +762,149 @@ function renderPending() {
     ),
     pageJump,
   );
+  renderBatchEntry();
+}
+
+function renderBatchEntry() {
+  const count = pending.comparison
+    ? batchEntryCandidates(filterPending(pending.comparison.pending, pending))
+        .length
+    : 0;
+  $("batch-entry-start").disabled =
+    batchEntry.running || state.pendingWrites > 0 || !count;
+  $("batch-entry-start").textContent = batchEntry.running
+    ? "自动录入中…"
+    : `自动录入 ${count} 部`;
+  $("batch-entry-stop").hidden = !batchEntry.running;
+  $("batch-entry-stop").disabled = batchEntry.stopRequested;
+  $("batch-entry-stop").textContent = batchEntry.stopRequested
+    ? "完成当前部后停止…"
+    : "停止录入";
+  $("pending-filters").disabled = batchEntry.running;
+  $("pending-refresh").disabled = batchEntry.running;
+  $("settings-open").disabled = state.pendingWrites > 0;
+  const counts = { success: 0, skipped: 0, failed: 0 };
+  for (const result of batchEntry.results) counts[result.status]++;
+  const phase = {
+    idle: "",
+    preparing: "正在确认未入库记录…",
+    running: batchEntry.stopRequested ? "正在停止" : "正在录入",
+    refreshing: "正在刷新 CM 状态…",
+    complete: "批量录入完成",
+    stopped: "批量录入已停止",
+    failed: "批量录入未完成",
+  }[batchEntry.phase];
+  $("batch-entry-progress").hidden = batchEntry.phase === "idle";
+  $("batch-entry-progress").textContent =
+    `${phase} · 已处理 ${batchEntry.results.length} / ${batchEntry.total} 部 · 录入 ${counts.success} · 跳过 ${counts.skipped} · 失败 ${counts.failed}`;
+  $("batch-entry-current").textContent = batchEntry.current
+    ? `#${batchEntry.current.id} · ${batchEntry.current.document?.title || "未命名漫画"}`
+    : batchEntry.phase === "stopped"
+      ? `剩余 ${batchEntry.total - batchEntry.results.length} 部未处理`
+      : "";
+  $("batch-entry-notice").textContent = batchEntry.notice || "";
+  $("batch-entry-details").hidden = batchEntry.results.length === 0;
+  $("batch-entry-details-label").textContent =
+    `查看逐部结果（${batchEntry.results.length}）`;
+}
+
+async function startBatchEntry() {
+  if (batchEntry.running || state.pendingWrites || pending.phase !== "ready")
+    return;
+  const filters = {
+    search: pending.search,
+    reason: pending.reason,
+    status: pending.status,
+  };
+  Object.assign(batchEntry, {
+    running: true,
+    stopRequested: false,
+    phase: "preparing",
+    total: 0,
+    current: null,
+    results: [],
+    notice: null,
+  });
+  $("batch-entry-results").replaceChildren();
+  state.pendingWrites++;
+  renderBatchEntry();
+  try {
+    // 点击时重新读取 CM，队列取当前筛选的全部分页，整个批次保持不变。
+    const [comics, groups] = await Promise.all([
+      readComicLibrary(),
+      api("/tags/groups"),
+    ]);
+    pending.comics = comics;
+    pending.comparison = compareLibraries(pending.documents, comics);
+    const records = batchEntryCandidates(
+      filterPending(pending.comparison.pending, filters),
+    );
+    batchEntry.total = records.length;
+    batchEntry.phase = "running";
+    renderBatchEntry();
+    const result = await runBatchEntry(records, {
+      groups: groups.data,
+      shouldStop: () => batchEntry.stopRequested,
+      onCurrent: (row) => {
+        batchEntry.current = row;
+        renderBatchEntry();
+      },
+      onResult: (row) => {
+        batchEntry.results.push(row);
+        $("batch-entry-results").prepend(
+          el(
+            "li",
+            { class: `batch-result ${row.status}`, "data-comic-id": row.id },
+            [
+              el(
+                "span",
+                { class: "batch-result-status" },
+                { success: "已录入", skipped: "跳过", failed: "失败" }[
+                  row.status
+                ],
+              ),
+              el(
+                "a",
+                { href: `#/entry/${row.id}?from=pending` },
+                `#${row.id} · ${row.title}`,
+              ),
+              el("small", {}, row.reason),
+            ],
+          ),
+        );
+        renderBatchEntry();
+      },
+    });
+    batchEntry.current = null;
+    batchEntry.notice = result.reason || null;
+    if (batchEntry.results.length) {
+      batchEntry.phase = "refreshing";
+      pending.needsCMRefresh = true;
+      browserPage.clear();
+      renderBatchEntry();
+      try {
+        pending.comics = await readComicLibrary();
+        pending.comparison = compareLibraries(
+          pending.documents,
+          pending.comics,
+        );
+        pending.needsCMRefresh = false;
+      } catch (error) {
+        batchEntry.notice =
+          `${batchEntry.notice || ""} 录入结果已保留，但 CM 列表刷新失败：${error.message}`.trim();
+      }
+    }
+    batchEntry.phase = result.stopped ? "stopped" : "complete";
+  } catch (error) {
+    batchEntry.phase = "failed";
+    batchEntry.notice = error.message;
+  } finally {
+    batchEntry.running = false;
+    batchEntry.current = null;
+    state.pendingWrites--;
+    renderPending();
+    announce($("batch-entry-progress").textContent);
+  }
 }
 
 async function loadEntry(
@@ -2036,6 +2194,11 @@ $("comic-id").addEventListener("input", () =>
 );
 $("archive-refresh").addEventListener("click", () => loadArchives());
 $("pending-refresh").addEventListener("click", () => scanPending());
+$("batch-entry-start").addEventListener("click", startBatchEntry);
+$("batch-entry-stop").addEventListener("click", () => {
+  batchEntry.stopRequested = true;
+  renderBatchEntry();
+});
 $("pending-cancel").addEventListener("click", () =>
   pending.controller?.abort(),
 );
