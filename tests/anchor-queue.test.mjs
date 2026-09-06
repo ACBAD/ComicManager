@@ -202,6 +202,55 @@ test("anchor 同时间组跨页时读完全部同组记录", async (t) => {
   assert.ok(!result.documents.has(999));
 });
 
+test("失败或删除记录即使 CM 时间更新也不能作为 anchor 截断后续待处理漫画", async (t) => {
+  for (const status of ["failed", "deleted", "purged"]) {
+    mockPages(t, [cm(30), cm(10)], () => [
+      doc(30, 5, { status }),
+      doc(20, 4),
+      doc(10, 3),
+    ]);
+    const result = await scan();
+    assert.equal(result.anchor.document_id, 10);
+    assert.deepEqual(
+      compareLibraries(result.documents, result.comics, {
+        full: false,
+      }).pending.map((row) => row.id),
+      [20],
+    );
+  }
+});
+
+test("缓存中的失败、删除和清理记录不再合并，旧活动记录变为这些状态后移出队列", () => {
+  for (const status of ["failed", "deleted", "purged"]) {
+    const previous = map([doc(1, 2, { status }), doc(2, 3), doc(3, 4)]);
+    const merged = retainPendingDocuments(
+      map([doc(2, 5, { status })]),
+      previous,
+      new Map(),
+    );
+    assert.equal(merged.has(1), false);
+    const result = compareLibraries(merged, new Map([[2, cm(2)]]), {
+      cmMinId: 100,
+    });
+    assert.deepEqual(
+      result.pending.map((row) => row.id),
+      [3],
+    );
+    assert.equal(result.completed, 0);
+    const restored = retainPendingDocuments(
+      map([doc(2, 7)]),
+      merged,
+      new Map(),
+    );
+    assert.deepEqual(
+      entryQueue(compareLibraries(restored, new Map()).pending).map(
+        (row) => row.id,
+      ),
+      [3, 2],
+    );
+  }
+});
+
 test("每次扫描去重合并队列，保留已排队记录，完成后移出，再次更新可重新排队", () => {
   const first = map([doc(10), doc(20, 3)]);
   const comics = new Map([[10, cm(10)]]);
@@ -237,13 +286,14 @@ test("每次扫描去重合并队列，保留已排队记录，完成后移出�
   assert.equal(first.size, 2);
 });
 
-test("队列按更新时间升序，同时间按 ID 升序，CM 旧记录也进入队列；清理记录仅供核对", () => {
+test("队列按更新时间升序，同时间按 ID 升序，失败、删除和清理记录不进入待处理列表", () => {
   const documents = map([
     doc(50, 2),
     doc(10, 4),
     doc(9, 4),
     doc(1, 1, { status: "deleted" }),
     doc(2, 1, { status: "purged" }),
+    doc(3, 1, { status: "failed" }),
   ]);
   const rows = compareLibraries(
     documents,
@@ -252,6 +302,10 @@ test("队列按更新时间升序，同时间按 ID 升序，CM 旧记录也进�
       [999, cm(999)],
     ]),
   ).pending;
+  assert.deepEqual(
+    rows.map((row) => row.id),
+    [999, 50, 9, 10],
+  );
   assert.deepEqual(
     entryQueue(rows).map((row) => row.id),
     [50, 9, 10],

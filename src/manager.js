@@ -19,6 +19,7 @@ import {
 import {
   PENDING_REASONS,
   DMB_STATUSES,
+  isQueueDocument,
   timestampNanos,
   documentSummary,
   readComic,
@@ -33,11 +34,11 @@ import {
   readEntryState,
   readEntryCompletion,
   filterPending,
-} from "./pending-comics.js?v=entry-by-id-1";
+} from "./pending-comics.js?v=queue-status-1";
 import { createLibraryPage } from "./library-page.js?v=id-desc-1";
 import { createComicReader } from "./comic-reader.js?v=full-preload-1";
 import { libraryReturn } from "./comic-library.js";
-import { runBatchEntry } from "./batch-entry.js?v=entry-by-id-1";
+import { runBatchEntry } from "./batch-entry.js?v=queue-status-1";
 
 const $ = (id) => document.getElementById(id);
 const groupLabel = (group) => `${GROUP_NAMES[group] || group} · ${group}`;
@@ -129,7 +130,7 @@ function restoreEntryQueue() {
         records
           .filter(
             (row) =>
-              row &&
+              isQueueDocument(row) &&
               Number.isSafeInteger(row.document_id) &&
               row.document_id >= 0,
           )
@@ -158,10 +159,7 @@ function updatePendingComparison() {
 }
 // comparison.pending 已按时间排序，不必在每次渲染表格行时重新排序整个队列。
 const nextEntry = () =>
-  pending.comparison?.pending.find(
-    (row) =>
-      row.document && !["deleted", "purged"].includes(row.document.status),
-  );
+  pending.comparison?.pending.find((row) => isQueueDocument(row.document));
 restoreEntryQueue();
 
 // 所有来源名称与 metadata 都作为文本节点输出。
@@ -751,8 +749,7 @@ function renderPending() {
                   el(
                     "span",
                     { class: "text-secondary" },
-                    !row.document ||
-                      ["deleted", "purged"].includes(row.document.status)
+                    !isQueueDocument(row.document)
                       ? "仅供核对"
                       : row.id === nextEntry()?.id
                         ? "下一部"
@@ -2270,7 +2267,8 @@ for (const [key, label] of Object.entries({
   ...DMB_STATUSES,
   missing_source: "来源缺失",
 }))
-  $("pending-status").append(el("option", { value: key }, label));
+  if (isQueueDocument({ status: key }))
+    $("pending-status").append(el("option", { value: key }, label));
 for (const name of ["search", "reason", "status"])
   $("pending-" + name).addEventListener(
     name === "search" ? "input" : "change",

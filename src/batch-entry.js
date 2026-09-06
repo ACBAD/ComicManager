@@ -14,7 +14,7 @@ import {
   entryBlockReason,
   completionReason,
   readEntryCompletion,
-} from "./pending-comics.js?v=entry-by-id-1";
+} from "./pending-comics.js?v=queue-status-1";
 
 async function enterComic(row, groups, base) {
   const blocked = (reason) => ({ status: "blocked", reason });

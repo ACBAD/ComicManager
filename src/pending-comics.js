@@ -18,6 +18,12 @@ export const DMB_STATUSES = {
   purged: "已清理",
 };
 
+export function isQueueDocument(document) {
+  return (
+    !!document && !["failed", "deleted", "purged"].includes(document.status)
+  );
+}
+
 // DMB 使用纳秒精度，CM 使用毫秒精度；统一时区后比较，保留小数秒。
 export function timestampNanos(value) {
   if (typeof value !== "string") return null;
@@ -294,8 +300,9 @@ export async function readLibrariesUntilAnchor(
       anchor =
         [...documents.values()].find(
           (document) =>
+            isQueueDocument(document) &&
             completionReason(document, comics.get(document.document_id)) ===
-            null,
+              null,
         ) || null;
       // 读完同一更新时间的记录；未覆盖到的 CM ID 保留为尚未核对，不为此预读全库。
       if (
@@ -321,17 +328,14 @@ export function oldestFirst(a, b) {
 }
 
 export function entryQueue(records) {
-  // 已删除、已清理和 CM 独有记录只供全量核对，不在 DMB 活动扫描范围内。
   return records
-    .filter(
-      (row) =>
-        row.document && !["deleted", "purged"].includes(row.document.status),
-    )
+    .filter((row) => isQueueDocument(row.document))
     .sort(oldestFirst);
 }
 
 export function entryBlockReason(row) {
   if (!row?.document) return "来源缺失";
+  if (row.document.status === "failed") return "归档失败";
   if (["deleted", "purged"].includes(row.document.status))
     return "来源已删除或清理";
   if (timestampNanos(row.document.updated_at) === null)
@@ -384,7 +388,11 @@ export async function readEntryCompletion(base, id, options) {
 export function retainPendingDocuments(documents, previous, comics) {
   const merged = new Map(documents);
   for (const [id, document] of previous || [])
-    if (!merged.has(id) && completionReason(document, comics.get(id)) !== null)
+    if (
+      isQueueDocument(document) &&
+      !merged.has(id) &&
+      completionReason(document, comics.get(id)) !== null
+    )
       merged.set(id, document);
   return merged;
 }
@@ -402,6 +410,7 @@ export function compareLibraries(
   for (const id of ids) {
     const document = documents.get(id),
       comic = comics.get(id);
+    if (document && !isQueueDocument(document)) continue;
     const reason =
       document && !comics.has(id) && id < cmMinId
         ? "unchecked"

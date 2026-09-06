@@ -371,6 +371,22 @@ test("来源不可用时停在队首，不读取后续预览", async (t) => {
   assert.deepEqual(api.calls, []);
 });
 
+test("失败、删除和清理记录不参与自动录入，也不阻挡后续有效漫画", async (t) => {
+  const api = server(t, { 4: [] });
+  const records = ["failed", "deleted", "purged"].map((status, index) =>
+    row(index + 1, { document: { ...row(index + 1).document, status } }),
+  );
+  const { results } = await run([...records, row(4)]);
+  assert.deepEqual(
+    results.map((result) => [result.id, result.status]),
+    [[4, "success"]],
+  );
+  assert.equal(
+    api.calls.some(({ url }) => /\/comics\/[123](?:\/|$)/.test(url)),
+    false,
+  );
+});
+
 test("并发录入冲突仍停在当前部，刷新确认后才能继续", async (t) => {
   const api = server(
     t,

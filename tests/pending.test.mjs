@@ -125,7 +125,7 @@ test("按 DMB document_id 与 CM id 对应，保留未入库、过期及 CM 独�
 test("搜索与原因、DMB 状态筛选可组合使用", () => {
   const rows = compareLibraries(
     new Map([
-      [1, doc(1, { title: "Blue 漫画", status: "failed" })],
+      [1, doc(1, { title: "Blue 漫画", status: "downloading" })],
       [2, doc(2)],
     ]),
     new Map([[3, comic(3)]]),
@@ -134,7 +134,7 @@ test("搜索与原因、DMB 状态筛选可组合使用", () => {
     filterPending(rows, {
       search: " blue ",
       reason: "missing",
-      status: "failed",
+      status: "downloading",
     }).map((row) => row.id),
     [1],
   );
