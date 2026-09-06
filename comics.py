@@ -81,11 +81,16 @@ class ComicManager:
                 linked_tag_ids.add(specific_tag_id)
 
     def get_comic(self, comic_id: int) -> Comic | None:
-        cursor = self.conn.execute("SELECT id, title, series_name, volume_number, updated_at FROM comics WHERE id = ?", (comic_id,))
-        row = cursor.fetchone()
-        if row is None:
-            return None
-        return self._comic_from_row(row)
+        # 主记录和关联信息使用同一快照，也不提交调用者已有的事务。
+        self.conn.execute("SAVEPOINT comic_get")
+        try:
+            row = self.conn.execute(
+                "SELECT id, title, series_name, volume_number, updated_at FROM comics WHERE id = ?",
+                (comic_id,),
+            ).fetchone()
+            return self._comic_from_row(row) if row is not None else None
+        finally:
+            self.conn.execute("RELEASE SAVEPOINT comic_get")
 
     def list_comics(self, *, limit: int = 50, offset: int = 0) -> tuple[list[Comic], int]:
         """按 ID 升序分页读取已入库漫画，返回原始模型和分页前总数。"""

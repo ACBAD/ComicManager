@@ -151,6 +151,17 @@ SpecificTag 必须映射到已有 GenericTag，不提供未映射记录或覆盖
 
 ## Comic
 
+### 已入库漫画详情
+
+`GET /api/comics/{comic_id}`
+
+- 按 ID 直接查询 CM 数据库，返回单个原始 Comic；ID 范围为 0 至 2⁶³−1。
+- 包含持久化的 `updated_at`、作者和原始 SpecificTag，所有字段来自同一读取快照。
+  不附加通用标签、来源摘要或其他展示字段。
+- 不存在时返回 404 `COMIC_NOT_FOUND`，`error.details.comic_id` 为请求的 ID。
+  非整数、负数或超出范围的 ID 返回 422 `INVALID_REQUEST`。
+- 要求登录，无需创建权限；不调用 DMB，不写入数据；成功响应包含 `Cache-Control: no-store`。
+
 ### 已入库漫画列表
 
 `GET /api/comics?limit=50&offset=0`
@@ -242,7 +253,7 @@ allow_override=true 时，在单一事务中替换漫画及作者、标签关联
 | HTTP | code |
 |---|---|
 | 401 / 403 | AUTHENTICATION_REQUIRED / FORBIDDEN |
-| 404 | GENERIC_TAG_NOT_FOUND / SPECIFIC_TAG_NOT_FOUND / SOURCE_DOCUMENT_NOT_FOUND |
+| 404 | GENERIC_TAG_NOT_FOUND / SPECIFIC_TAG_NOT_FOUND / COMIC_NOT_FOUND / SOURCE_DOCUMENT_NOT_FOUND |
 | 409 | GENERIC_TAG_EXISTS / SPECIFIC_TAG_MAPPING_CONFLICT / COMIC_ALREADY_EXISTS |
 | 409 | UNMAPPED_SPECIFIC_TAGS |
 | 422 | INVALID_REQUEST / INVALID_SPECIFIC_TAG / INVALID_SOURCE_METADATA / META_SCHEMA_VIOLATION |

@@ -330,6 +330,21 @@ def query_comics(
     return result
 
 
+@comics_api.get('/{comic_id}',
+                dependencies=[fastapi.Depends(Authoricator())],
+                name='comics.get_comic')
+def get_comic(
+    comic_id: Annotated[int, fastapi.Path(ge=0, le=2**63 - 1)],
+    response: fastapi.Response, comic_manager: ComicManagerDep,
+) -> comics.Comic:
+    """按 ID 读取 CM 中的原始 Comic，不访问 DMB。"""
+    comic = comic_manager.get_comic(comic_id)
+    if comic is None:
+        raise APIError(404, "COMIC_NOT_FOUND", "漫画未入库", comic_id=comic_id)
+    response.headers['Cache-Control'] = 'no-store'
+    return comic
+
+
 def fetch_comic_source(
     comic_id: int, comic_manager: comics.ComicManager, dmb_client: DMBClient,
 ) -> comics.Comic:
