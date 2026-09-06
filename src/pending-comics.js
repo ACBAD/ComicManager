@@ -6,6 +6,7 @@ export const PENDING_REASONS = {
   same_time: "更新时间相同",
   unknown_time: "时间无法比较",
   missing_source: "DMB 无对应记录",
+  unchecked: "CM 尚未核对",
 };
 export const DMB_STATUSES = {
   queued: "排队中",
@@ -171,17 +172,68 @@ export async function readDmbLibrary(
   return records;
 }
 
-export async function readDmbUntilAnchor(
+export async function readLibrariesUntilAnchor(
   base,
-  comics,
   { signal, onProgress = () => {} } = {},
 ) {
+  const controller = new AbortController();
+  signal = signal
+    ? AbortSignal.any([signal, controller.signal])
+    : controller.signal;
   const documents = new Map();
+  const comics = new Map();
+  let cmTotal = null,
+    cmOffset = 0,
+    cmMinId = Infinity;
   let offset = 0,
     anchor = null,
-    previousTime = null;
-  while (true) {
+    previousTime = null,
+    dmbLoaded = 0;
+  const cmComplete = () => cmTotal !== null && cmOffset === cmTotal;
+  const progress = () =>
+    onProgress({ dmbLoaded, cmLoaded: comics.size, cmTotal });
+  const readCMPage = async () => {
+    if (cmComplete()) return;
     signal?.throwIfAborted();
+    const { data, headers } = await api("/comics/query", {
+      method: "POST",
+      signal,
+      body: { order: "DESC", limit: 100, offset: cmOffset },
+    });
+    signal.throwIfAborted();
+    validateRecords(data, "id", "CM");
+    const count = headers.get("X-Total-Count");
+    if (!/^\d+$/.test(count || "") || !Number.isSafeInteger(Number(count)))
+      throw new ApiError(
+        "CM 未返回有效总数，无法确认分页范围。",
+        "INVALID_RESPONSE",
+      );
+    if (cmTotal !== null && cmTotal !== Number(count))
+      throw new ApiError(
+        "CM 库在扫描期间发生了变化，请重新扫描。",
+        "LIBRARY_CHANGED",
+      );
+    cmTotal = Number(count);
+    for (const comic of data) {
+      if (comic.id >= cmMinId)
+        throw new ApiError(
+          "CM 排序或分页在扫描期间发生变化，请重新扫描。",
+          "LIBRARY_CHANGED",
+        );
+      cmMinId = comic.id;
+      comics.set(comic.id, {
+        id: comic.id,
+        title: comic.title,
+        updated_at: comic.updated_at,
+      });
+    }
+    cmOffset += data.length;
+    if (cmOffset > cmTotal || (!data.length && cmOffset < cmTotal))
+      throw new ApiError("CM 分页结果不完整，请重新扫描。", "LIBRARY_CHANGED");
+    progress();
+  };
+  const readDMBPage = async () => {
+    signal.throwIfAborted();
     const { data } = await dmb(base, "/v1/documents/query", {
       method: "POST",
       signal,
@@ -195,36 +247,67 @@ export async function readDmbUntilAnchor(
     });
     signal?.throwIfAborted();
     validateRecords(data, "document_id", "DMB");
-    for (const document of data) {
-      const time = timestampNanos(document.updated_at);
-      if (time === null)
-        throw new ApiError(
-          "DMB 更新时间无法比较，请使用全量扫描检查。",
-          "INVALID_RESPONSE",
-        );
+    dmbLoaded += data.length;
+    progress();
+    return data;
+  };
+  const result = () => ({
+    documents: anchor
+      ? new Map(
+          [...documents].filter(
+            ([, document]) =>
+              timestampNanos(document.updated_at) >=
+              timestampNanos(anchor.updated_at),
+          ),
+        )
+      : documents,
+    comics,
+    anchor,
+    cmTotal,
+    cmMinId,
+    cmComplete: cmComplete(),
+    dmbLoaded,
+  });
+  try {
+    while (true) {
+      // 累积两边各一页后本地匹配；CM 读完后只继续读取 DMB。
+      const [, data] = await Promise.all([readCMPage(), readDMBPage()]);
+      for (const document of data) {
+        const time = timestampNanos(document.updated_at);
+        if (time === null)
+          throw new ApiError(
+            "DMB 更新时间无法比较，请使用全量扫描检查。",
+            "INVALID_RESPONSE",
+          );
+        if (
+          (previousTime !== null && time > previousTime) ||
+          documents.has(document.document_id)
+        )
+          throw new ApiError(
+            "DMB 排序或分页在扫描期间发生变化，请重新扫描。",
+            "LIBRARY_CHANGED",
+          );
+        previousTime = time;
+        documents.set(document.document_id, documentSummary(document));
+      }
+      // 新 CM 分页也可能匹配较早读到的 DMB 记录，所以每轮按 DMB 顺序重新查找。
+      anchor =
+        [...documents.values()].find(
+          (document) =>
+            completionReason(document, comics.get(document.document_id)) ===
+            null,
+        ) || null;
+      // 读完同一更新时间的记录；未覆盖到的 CM ID 保留为尚未核对，不为此预读全库。
       if (
-        (previousTime !== null && time > previousTime) ||
-        documents.has(document.document_id)
+        data.length < 100 ||
+        (anchor && previousTime < timestampNanos(anchor.updated_at))
       )
-        throw new ApiError(
-          "DMB 排序或分页在扫描期间发生变化，请重新扫描。",
-          "LIBRARY_CHANGED",
-        );
-      // DMB 没有第二排序键；读完 anchor 所在的同时间组，不能在组内截断。
-      if (anchor && time < timestampNanos(anchor.updated_at))
-        return { documents, anchor };
-      previousTime = time;
-      const summary = documentSummary(document);
-      documents.set(document.document_id, summary);
-      if (
-        !anchor &&
-        completionReason(summary, comics.get(document.document_id)) === null
-      )
-        anchor = summary;
+        return result();
+      offset += data.length;
     }
-    onProgress({ loaded: documents.size, anchor });
-    if (data.length < 100) return { documents, anchor };
-    offset += data.length;
+  } catch (error) {
+    controller.abort();
+    throw error;
   }
 }
 
@@ -297,14 +380,21 @@ export function retainPendingDocuments(documents, previous, comics) {
   return merged;
 }
 
-export function compareLibraries(documents, comics, { full = true } = {}) {
+export function compareLibraries(
+  documents,
+  comics,
+  { full = true, cmMinId = 0 } = {},
+) {
   const pending = [];
   let completed = 0;
   const ids = new Set([...documents.keys(), ...(full ? comics.keys() : [])]);
   for (const id of ids) {
     const document = documents.get(id),
       comic = comics.get(id);
-    const reason = completionReason(document, comic);
+    const reason =
+      document && !comic && id < cmMinId
+        ? "unchecked"
+        : completionReason(document, comic);
     if (reason === null) completed++;
     else pending.push({ id, document, comic, reason });
   }

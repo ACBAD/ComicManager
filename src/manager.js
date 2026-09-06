@@ -23,7 +23,7 @@ import {
   documentSummary,
   readComicLibrary,
   readDmbLibrary,
-  readDmbUntilAnchor,
+  readLibrariesUntilAnchor,
   retainPendingDocuments,
   compareLibraries,
   completionReason,
@@ -31,11 +31,11 @@ import {
   entryBlockReason,
   readEntryCompletion,
   filterPending,
-} from "./pending-comics.js?v=anchor-queue-1";
+} from "./pending-comics.js?v=anchor-batches-1";
 import { createLibraryPage } from "./library-page.js?v=id-desc-1";
 import { createComicReader } from "./comic-reader.js?v=full-preload-1";
 import { libraryReturn } from "./comic-library.js";
-import { runBatchEntry } from "./batch-entry.js?v=anchor-queue-1";
+import { runBatchEntry } from "./batch-entry.js?v=anchor-batches-1";
 
 const $ = (id) => document.getElementById(id);
 const groupLabel = (group) => `${GROUP_NAMES[group] || group} · ${group}`;
@@ -78,6 +78,8 @@ const pending = {
   mode: "anchor",
   anchor: null,
   scanned: 0,
+  cmMinId: 0,
+  cmTotal: null,
   offset: 0,
   search: "",
   reason: "all",
@@ -138,7 +140,9 @@ function restoreEntryQueue() {
 function updatePendingComparison() {
   pending.comparison = compareLibraries(pending.documents, pending.comics, {
     full: pending.mode === "full",
+    cmMinId: pending.cmMinId,
   });
+  if (pending.cmMinId === 0) pending.cmTotal = pending.comics.size;
   try {
     localStorage.setItem(
       `comicmanager.entryQueue:${dmbUrl}`,
@@ -464,39 +468,65 @@ async function scanPending(localOnly = false, mode = "anchor") {
   };
   progress();
   try {
-    const comics = await readComicLibrary({
+    const cmOptions = {
       signal,
       onProgress: ({ loaded, total }) => {
         counts.cm = loaded;
         counts.total = total;
         progress();
       },
-    });
+    };
+    let comics,
+      cmTotal,
+      cmMinId = 0;
     let documents = pending.documents || new Map();
     let anchor = pending.anchor;
-    if (!localOnly) {
-      const options = {
+    if (localOnly) {
+      comics = await readComicLibrary(cmOptions);
+      cmTotal = comics.size;
+    } else if (mode === "anchor") {
+      const result = await readLibrariesUntilAnchor(dmbUrl, {
         signal,
-        onProgress: ({ loaded }) => {
-          counts.dmb = loaded;
+        onProgress: ({ dmbLoaded, cmLoaded, cmTotal }) => {
+          counts.dmb = dmbLoaded;
+          counts.cm = cmLoaded;
+          counts.total = cmTotal;
           progress();
         },
-      };
-      const result =
-        mode === "anchor"
-          ? await readDmbUntilAnchor(dmbUrl, comics, options)
-          : { documents: await readDmbLibrary(dmbUrl, options), anchor: null };
-      counts.dmb = result.documents.size;
-      documents = retainPendingDocuments(
-        result.documents,
-        pending.documents,
-        comics,
-      );
-      anchor = result.anchor;
+      });
+      ({ documents, comics, anchor, cmTotal } = result);
+      cmMinId = result.cmComplete ? 0 : result.cmMinId;
+      counts.dmb = result.dmbLoaded;
+    } else {
+      [documents, comics] = await Promise.all([
+        readDmbLibrary(dmbUrl, {
+          signal,
+          onProgress: ({ loaded }) => {
+            counts.dmb = loaded;
+            progress();
+          },
+        }),
+        readComicLibrary(cmOptions),
+      ]);
+      cmTotal = comics.size;
+      anchor = null;
+    }
+    if (!localOnly) {
+      // 只合并原队列；上次全量扫描已经完成的条目不能因为 CM 本次尚未读到而重新入队。
+      const queued = pending.comparison
+        ? new Map(
+            pending.comparison.pending
+              .filter((row) => row.document)
+              .map((row) => [row.id, row.document]),
+          )
+        : pending.documents;
+      documents = retainPendingDocuments(documents, queued, comics);
     }
     if (!current() || signal.aborted) return;
     pending.documents = documents;
     pending.comics = comics;
+    pending.cmMinId = cmMinId;
+    pending.cmTotal = cmTotal;
     if (!localOnly) pending.mode = mode;
     updatePendingComparison();
     pending.phase = "ready";
@@ -513,14 +543,16 @@ async function scanPending(localOnly = false, mode = "anchor") {
     );
   } catch (error) {
     if (!current()) return;
+    const stopped = signal.aborted;
+    controller.abort();
     pending.phase = "ready";
     if (pending.comparison) renderPending();
-    else pending.phase = signal.aborted ? "stopped" : "error";
+    else pending.phase = stopped ? "stopped" : "error";
     $("pending-progress").hidden = false;
-    $("pending-progress").textContent = signal.aborted
+    $("pending-progress").textContent = stopped
       ? "扫描已停止，原有队列保留。"
       : "扫描未完成，原有队列保留，未加入本次不完整结果。";
-    if (!signal.aborted)
+    if (!stopped)
       $("pending-error").replaceChildren(
         errorBox(error, () => scanPending(localOnly, mode)),
       );
@@ -581,7 +613,7 @@ function renderPending() {
     el(
       "span",
       {},
-      `${pending.mode === "anchor" ? "Anchor" : "全量"} 扫描 · 本次核对 DMB ${pending.scanned} 条 · CM ${comparison.cmTotal} 条`,
+      `${pending.mode === "anchor" ? "Anchor" : "全量"} 扫描 · 本次读取 DMB ${pending.scanned} 条 · CM ${comparison.cmTotal} / ${pending.cmTotal} 条`,
     ),
     el(
       "small",
@@ -678,7 +710,11 @@ function renderPending() {
                   { "data-label": "CM 更新时间" },
                   timeNode(
                     row.comic?.updated_at,
-                    row.comic ? "时间缺失" : "未入库",
+                    row.comic
+                      ? "时间缺失"
+                      : row.reason === "unchecked"
+                        ? "尚未核对"
+                        : "未入库",
                   ),
                 ),
                 el(
@@ -846,6 +882,7 @@ async function startBatchEntry() {
       api("/tags/groups"),
     ]);
     pending.comics = comics;
+    pending.cmMinId = 0;
     updatePendingComparison();
     const records = entryQueue(pending.comparison.pending);
     batchEntry.total = records.length;
@@ -895,6 +932,7 @@ async function startBatchEntry() {
       renderBatchEntry();
       try {
         pending.comics = await readComicLibrary();
+        pending.cmMinId = 0;
         updatePendingComparison();
         pending.needsCMRefresh = false;
       } catch (error) {
@@ -952,6 +990,7 @@ async function loadEntry(
     state.sourceError = source.error || null;
     state.existingComic = comicLibrary?.get(id) || null;
     pending.comics = comicLibrary;
+    pending.cmMinId = 0;
     if (pending.documents && source.data) {
       pending.documents.set(id, documentSummary(source.data));
     }
@@ -2269,6 +2308,8 @@ $("settings-form").addEventListener("submit", (event) => {
       pending.controller?.abort();
       pending.documents = pending.comics = pending.comparison = null;
       pending.mode = "anchor";
+      pending.cmMinId = 0;
+      pending.cmTotal = null;
       pending.anchor = pending.scannedAt = null;
       restoreEntryQueue();
       pending.phase = "idle";
