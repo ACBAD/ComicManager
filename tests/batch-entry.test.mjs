@@ -93,11 +93,13 @@ function server(t, documents, { mapped = [], generics = [], intercept } = {}) {
         { id: Number(match[1]), title: `comic ${match[1]}` },
         201,
       );
-    if (url === "/api/comics/query") {
-      const id = Number(body.title.replace("comic ", ""));
-      return response([
-        { id, title: body.title, updated_at: "2026-09-06T00:00:00Z" },
-      ]);
+    if ((match = url.match(/^\/api\/comics\/(\d+)$/))) {
+      const id = Number(match[1]);
+      return response({
+        id,
+        title: `comic ${id}`,
+        updated_at: "2026-09-06T00:00:00Z",
+      });
     }
     if ((match = url.match(/^https:\/\/dmb.example\/v1\/documents\/(\d+)$/)))
       return response({

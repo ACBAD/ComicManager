@@ -39,6 +39,8 @@ flowchart TD
 
 1. `GET /api/tags/groups`
 2. `GET /api/comics/{comic_id}/preview`
+3. `GET /api/comics/{comic_id}`：只查询当前漫画是否已入库，返回持久化 Comic；
+   仅 404 `COMIC_NOT_FOUND` 表示未入库。无需读取整个 CM 列表。
 
 TagGroup 可以在浏览器会话内缓存；preview 不缓存。
 preview 响应体直接是 Comic，不依赖 ETag 或其他版本字段。

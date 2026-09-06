@@ -14,7 +14,7 @@ import {
   entryBlockReason,
   completionReason,
   readEntryCompletion,
-} from "./pending-comics.js?v=anchor-batches-1";
+} from "./pending-comics.js?v=entry-by-id-1";
 
 async function enterComic(row, groups, base) {
   const blocked = (reason) => ({ status: "blocked", reason });
@@ -59,11 +59,11 @@ async function enterComic(row, groups, base) {
         "SPECIFIC_TAG_MAPPING_CONFLICT",
       );
   }
-  const { data } = await api(
+  await api(
     `/comics/${row.id}/commit${row.comic ? "?allow_override=true" : ""}`,
     { method: "POST" },
   );
-  const persisted = await readEntryCompletion(base, row.id, data.title);
+  const persisted = await readEntryCompletion(base, row.id);
   if (completionReason(persisted.document, persisted.comic) !== null)
     return {
       ...blocked("已提交，但 CM 更新时间尚未晚于 DMB，当前部仍留在队列"),

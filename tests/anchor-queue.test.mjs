@@ -348,25 +348,22 @@ test("一边请求失败会取消另一边在途请求", async (t) => {
   assert.equal(dmbSignal.aborted, true);
 });
 
-test("录入完成必须读到持久化的 CM 时间；同名漫画需按 ID 查找并继续翻页", async (t) => {
+test("录入完成按 ID 读取持久化 CM 与 DMB，不查询标题或列表", async (t) => {
   const calls = [];
   t.mock.method(globalThis, "fetch", async (url, options) => {
     calls.push(url);
+    assert.equal(options.method, "GET");
+    assert.equal(options.body, undefined);
     if (url.startsWith("https://")) return response(doc(101));
-    const body = JSON.parse(options.body);
-    assert.equal(body.title_match, "exact");
-    return response(
-      body.offset
-        ? [cm(101)]
-        : Array.from({ length: 100 }, (_, i) => cm(i + 1)),
-    );
+    assert.equal(url, "/api/comics/101");
+    return response({ ...cm(101), title: "已变更的本地标题" });
   });
-  const result = await readEntryCompletion(
-    "https://dmb.example",
-    101,
-    "comic 101",
-  );
+  const result = await readEntryCompletion("https://dmb.example", 101);
   assert.equal(result.comic.id, 101);
+  assert.equal(result.comic.title, "已变更的本地标题");
   assert.equal(result.document.document_id, 101);
-  assert.equal(calls.filter((url) => url === "/api/comics/query").length, 2);
+  assert.deepEqual(calls, [
+    "/api/comics/101",
+    "https://dmb.example/v1/documents/101",
+  ]);
 });

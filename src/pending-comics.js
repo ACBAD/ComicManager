@@ -341,34 +341,43 @@ export function entryBlockReason(row) {
   return null;
 }
 
-export async function readEntryCompletion(base, id, title) {
-  // commit 返回的是来源模型，时间可能为空；通过现有查询接口读取落库后的原始 Comic。
-  const local = async () => {
-    for (let offset = 0; ; offset += 100) {
-      const { data } = await api("/comics/query", {
-        method: "POST",
-        body: { title, title_match: "exact", limit: 100, offset },
-      });
-      validateRecords(data, "id", "CM");
-      const comic = data.find((row) => row.id === id);
-      if (comic) return comic;
-      if (data.length < 100)
-        throw new ApiError(
-          "漫画已提交，但未能确认 CM 记录，请重新扫描。",
-          "ENTRY_NOT_CONFIRMED",
-        );
-    }
-  };
+export async function readComic(id, { signal } = {}) {
+  signal?.throwIfAborted();
+  try {
+    const { data } = await api(`/comics/${id}`, { signal });
+    signal?.throwIfAborted();
+    if (data?.id !== id)
+      throw new ApiError("CM 返回了不同的漫画。", "INVALID_RESPONSE");
+    return data;
+  } catch (error) {
+    if (error.status === 404 && error.code === "COMIC_NOT_FOUND") return null;
+    throw error;
+  }
+}
+
+export async function readEntryState(base, id, { signal } = {}) {
   const [comic, source] = await Promise.all([
-    local(),
-    dmb(base, `/v1/documents/${id}`),
+    readComic(id, { signal }),
+    dmb(base, `/v1/documents/${id}`, { signal }),
   ]);
+  signal?.throwIfAborted();
   if (source.data?.document_id !== id)
     throw new ApiError(
       "DMB 返回了不同的文档，请重新扫描。",
       "INVALID_RESPONSE",
     );
   return { comic, document: documentSummary(source.data) };
+}
+
+export async function readEntryCompletion(base, id, options) {
+  // commit 的来源模型可能没有时间；只按 ID 读取持久化结果，与当前 DMB 记录核对。
+  const result = await readEntryState(base, id, options);
+  if (!result.comic)
+    throw new ApiError(
+      "漫画已提交，但未能确认 CM 记录，请重试核对。",
+      "ENTRY_NOT_CONFIRMED",
+    );
+  return result;
 }
 
 // 每次扫描合并新结果，保留已经在队列中等待处理的记录。
@@ -387,19 +396,26 @@ export function compareLibraries(
 ) {
   const pending = [];
   let completed = 0;
-  const ids = new Set([...documents.keys(), ...(full ? comics.keys() : [])]);
+  // 按 ID 查询得到的 null 表示已确认未入库，Map 中没有键才表示尚未读取。
+  const storedIds = [...comics].filter(([, comic]) => comic).map(([id]) => id);
+  const ids = new Set([...documents.keys(), ...(full ? storedIds : [])]);
   for (const id of ids) {
     const document = documents.get(id),
       comic = comics.get(id);
     const reason =
-      document && !comic && id < cmMinId
+      document && !comics.has(id) && id < cmMinId
         ? "unchecked"
         : completionReason(document, comic);
     if (reason === null) completed++;
     else pending.push({ id, document, comic, reason });
   }
   pending.sort(oldestFirst);
-  return { pending, completed, dmbTotal: documents.size, cmTotal: comics.size };
+  return {
+    pending,
+    completed,
+    dmbTotal: documents.size,
+    cmTotal: storedIds.length,
+  };
 }
 
 export function filterPending(

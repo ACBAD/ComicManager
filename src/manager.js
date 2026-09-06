@@ -21,6 +21,7 @@ import {
   DMB_STATUSES,
   timestampNanos,
   documentSummary,
+  readComic,
   readComicLibrary,
   readDmbLibrary,
   readLibrariesUntilAnchor,
@@ -29,13 +30,14 @@ import {
   completionReason,
   entryQueue,
   entryBlockReason,
+  readEntryState,
   readEntryCompletion,
   filterPending,
-} from "./pending-comics.js?v=anchor-batches-1";
+} from "./pending-comics.js?v=entry-by-id-1";
 import { createLibraryPage } from "./library-page.js?v=id-desc-1";
 import { createComicReader } from "./comic-reader.js?v=full-preload-1";
 import { libraryReturn } from "./comic-library.js";
-import { runBatchEntry } from "./batch-entry.js?v=anchor-batches-1";
+import { runBatchEntry } from "./batch-entry.js?v=entry-by-id-1";
 
 const $ = (id) => document.getElementById(id);
 const groupLabel = (group) => `${GROUP_NAMES[group] || group} · ${group}`;
@@ -73,7 +75,7 @@ const pending = {
   comparison: null,
   controller: null,
   phase: "idle",
-  needsCMRefresh: false,
+  refreshIds: new Set(),
   scannedAt: null,
   mode: "anchor",
   anchor: null,
@@ -142,7 +144,7 @@ function updatePendingComparison() {
     full: pending.mode === "full",
     cmMinId: pending.cmMinId,
   });
-  if (pending.cmMinId === 0) pending.cmTotal = pending.comics.size;
+  if (pending.cmMinId === 0) pending.cmTotal = pending.comparison.cmTotal;
   try {
     localStorage.setItem(
       `comicmanager.entryQueue:${dmbUrl}`,
@@ -357,9 +359,16 @@ async function route() {
   ) {
     document.title = "顺序录入 · ComicManager";
     showPage("pending");
-    if (pending.phase !== "ready" || pending.needsCMRefresh)
-      await scanPending(pending.phase === "ready" && pending.needsCMRefresh);
-    if (version !== routeVersion || pending.phase !== "ready") return;
+    if (pending.phase !== "ready" || pending.refreshIds.size)
+      await scanPending(
+        pending.phase === "ready" && pending.refreshIds.size > 0,
+      );
+    if (version !== routeVersion) return;
+    if (pending.phase !== "ready" || pending.refreshIds.size) {
+      state.hash = "#/pending";
+      history.replaceState(null, "", state.hash);
+      return;
+    }
     const row = nextEntry();
     const requested = match ? Number(match[1]) : row?.id;
     if (!row || requested !== row.id || entryBlockReason(row)) {
@@ -390,8 +399,11 @@ async function route() {
   } else if (hash === "#/pending") {
     document.title = "待处理队列 · ComicManager";
     showPage("pending");
-    if (pending.phase === "ready" && !pending.needsCMRefresh) renderPending();
-    else await scanPending(pending.phase === "ready" && pending.needsCMRefresh);
+    if (pending.phase === "ready" && !pending.refreshIds.size) renderPending();
+    else
+      await scanPending(
+        pending.phase === "ready" && pending.refreshIds.size > 0,
+      );
   } else if (hash === "#/tags") {
     document.title = "标签管理 · ComicManager";
     showPage("tags");
@@ -461,10 +473,12 @@ async function scanPending(localOnly = false, mode = "anchor") {
   $("pending-cancel").hidden = false;
   $("pending-progress").hidden = false;
   const counts = { dmb: 0, cm: 0, total: null };
+  const refreshIds = [...pending.refreshIds];
   const progress = () => {
     if (current() && !signal.aborted)
-      $("pending-progress").textContent =
-        `${localOnly ? "正在刷新队列" : mode === "anchor" ? "正在按 anchor 扫描" : "正在全量扫描"}… DMB ${counts.dmb} 条 · CM ${counts.cm}${counts.total === null ? "" : ` / ${counts.total}`} 条`;
+      $("pending-progress").textContent = localOnly
+        ? `正在核对已处理漫画… ${counts.cm} / ${refreshIds.length} 部`
+        : `${mode === "anchor" ? "正在按 anchor 扫描" : "正在全量扫描"}… DMB ${counts.dmb} 条 · CM ${counts.cm}${counts.total === null ? "" : ` / ${counts.total}`} 条`;
   };
   progress();
   try {
@@ -482,8 +496,18 @@ async function scanPending(localOnly = false, mode = "anchor") {
     let documents = pending.documents || new Map();
     let anchor = pending.anchor;
     if (localOnly) {
-      comics = await readComicLibrary(cmOptions);
-      cmTotal = comics.size;
+      // 只重查刚处理过的 ID，保留其余扫描结果及 CM 分页覆盖范围。
+      comics = new Map(pending.comics);
+      documents = new Map(documents);
+      await mapLimit(refreshIds, 6, async (id) => {
+        const result = await readEntryState(dmbUrl, id, { signal });
+        comics.set(id, result.comic);
+        documents.set(id, result.document);
+        counts.cm++;
+        progress();
+      });
+      cmTotal = pending.cmTotal;
+      cmMinId = pending.cmMinId;
     } else if (mode === "anchor") {
       const result = await readLibrariesUntilAnchor(dmbUrl, {
         signal,
@@ -530,7 +554,7 @@ async function scanPending(localOnly = false, mode = "anchor") {
     if (!localOnly) pending.mode = mode;
     updatePendingComparison();
     pending.phase = "ready";
-    pending.needsCMRefresh = false;
+    if (localOnly) for (const id of refreshIds) pending.refreshIds.delete(id);
     if (!localOnly) {
       pending.anchor = anchor;
       pending.scanned = counts.dmb;
@@ -549,9 +573,13 @@ async function scanPending(localOnly = false, mode = "anchor") {
     if (pending.comparison) renderPending();
     else pending.phase = stopped ? "stopped" : "error";
     $("pending-progress").hidden = false;
-    $("pending-progress").textContent = stopped
-      ? "扫描已停止，原有队列保留。"
-      : "扫描未完成，原有队列保留，未加入本次不完整结果。";
+    $("pending-progress").textContent = localOnly
+      ? stopped
+        ? "核对已停止，原有队列保留。"
+        : "核对未完成，原有队列保留，请重试当前漫画。"
+      : stopped
+        ? "扫描已停止，原有队列保留。"
+        : "扫描未完成，原有队列保留，未加入本次不完整结果。";
     if (!stopped)
       $("pending-error").replaceChildren(
         errorBox(error, () => scanPending(localOnly, mode)),
@@ -595,7 +623,7 @@ function renderNextEntry() {
           },
           row.comic ? "处理下一部 · 更新漫画 →" : "处理下一部 →",
         )
-      : null,
+      : "",
   );
 }
 
@@ -927,14 +955,14 @@ async function startBatchEntry() {
     batchEntry.notice = result.reason || null;
     if (batchEntry.results.length) {
       batchEntry.phase = "refreshing";
-      pending.needsCMRefresh = true;
+      for (const row of batchEntry.results) pending.refreshIds.add(row.id);
       browserPage.clear();
       renderBatchEntry();
       try {
         pending.comics = await readComicLibrary();
         pending.cmMinId = 0;
         updatePendingComparison();
-        pending.needsCMRefresh = false;
+        pending.refreshIds.clear();
       } catch (error) {
         batchEntry.notice =
           `${batchEntry.notice || ""} 录入结果已保留，但 CM 列表刷新失败：${error.message}`.trim();
@@ -977,25 +1005,23 @@ async function loadEntry(
       (r) => ({ data: r.data }),
       (error) => ({ error }),
     );
-    const comicLookup = readComicLibrary({ signal });
-    const [preview, , source, comicLibrary] = await Promise.all([
+    const [preview, , source, comic] = await Promise.all([
       api(`/comics/${id}/preview`, { signal }),
       loadGroups(signal),
       sourceResult,
-      comicLookup,
+      readComic(id, { signal }),
     ]);
     if (version !== routeVersion) return;
     state.preview = preview.data;
     state.source = source.data || null;
     state.sourceError = source.error || null;
-    state.existingComic = comicLibrary?.get(id) || null;
-    pending.comics = comicLibrary;
-    pending.cmMinId = 0;
+    state.existingComic = comic;
+    pending.comics.set(id, comic);
     if (pending.documents && source.data) {
       pending.documents.set(id, documentSummary(source.data));
     }
     updatePendingComparison();
-    pending.needsCMRefresh = false;
+    if (source.data) pending.refreshIds.delete(id);
     if (nextEntry()?.id !== id || entryBlockReason(nextEntry())) {
       showPage("pending");
       state.hash = "#/pending";
@@ -1081,7 +1107,7 @@ async function refreshSource() {
     state.sourceError = null;
     if (pending.documents) {
       pending.documents.set(state.comicId, documentSummary(data));
-      pending.needsCMRefresh = true;
+      pending.refreshIds.add(state.comicId);
     }
     state.message = null;
     setService(true);
@@ -1925,7 +1951,7 @@ function renderResult() {
       el(
         "a",
         { href: "#/entry", class: "btn btn-primary" },
-        pending.needsCMRefresh
+        pending.refreshIds.size
           ? "刷新队列并继续 →"
           : nextEntry()
             ? nextEntry().id === state.comicId
@@ -2003,6 +2029,7 @@ async function commitComic() {
   renderMessage();
   renderEntry();
   let missing = null;
+  pending.refreshIds.add(state.comicId);
   try {
     const { data } = await api(
       `/comics/${state.comicId}/commit${state.existingComic ? "?allow_override=true" : ""}`,
@@ -2011,17 +2038,12 @@ async function commitComic() {
     state.result = data;
     state.phase = "success";
     browserPage.clear();
-    pending.needsCMRefresh = true;
     try {
-      const persisted = await readEntryCompletion(
-        dmbUrl,
-        state.comicId,
-        data.title,
-      );
+      const persisted = await readEntryCompletion(dmbUrl, state.comicId);
       pending.comics.set(state.comicId, persisted.comic);
       pending.documents.set(state.comicId, persisted.document);
       updatePendingComparison();
-      pending.needsCMRefresh = false;
+      pending.refreshIds.delete(state.comicId);
       if (completionReason(persisted.document, persisted.comic) !== null)
         message(
           "漫画已保存，但 CM 更新时间尚未晚于 DMB，仍保留在待处理队列中。",
@@ -2029,7 +2051,7 @@ async function commitComic() {
         );
     } catch (error) {
       message(
-        "漫画已保存，队列状态确认失败；继续前会重新读取 CM。",
+        "漫画已保存，队列状态确认失败；继续前会重新核对这部漫画。",
         "warning",
         error,
       );
@@ -2038,7 +2060,6 @@ async function commitComic() {
   } catch (error) {
     if (error.code === "COMIC_ALREADY_EXISTS") {
       state.phase = "already-exists";
-      pending.needsCMRefresh = true;
     } else if (error.code === "UNMAPPED_SPECIFIC_TAGS") {
       missing = error.details.specific_tags || [];
       state.phase = "resolving";
@@ -2313,7 +2334,7 @@ $("settings-form").addEventListener("submit", (event) => {
       pending.anchor = pending.scannedAt = null;
       restoreEntryQueue();
       pending.phase = "idle";
-      pending.needsCMRefresh = false;
+      pending.refreshIds.clear();
       for (const item of state.items) item.dirty = false;
       void route();
     } else if (imageRouteChanged) {
