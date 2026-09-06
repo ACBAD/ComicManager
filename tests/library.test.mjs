@@ -109,6 +109,7 @@ test("漫画查询用 POST 提交组合条件，分页换算与后端约定一�
       author_match: "exact",
       generic_tag_ids: [7, 21],
       tag_match: "all",
+      order: "DESC",
       limit: 20,
       offset: 20,
     },
@@ -121,6 +122,7 @@ test("无筛选时省略文字条件，空页仍保留总数", async (t) => {
     const body = JSON.parse(options.body);
     assert.equal(body.title, null);
     assert.equal(body.author_name, null);
+    assert.equal(body.order, "DESC");
     return response([], 12);
   });
   assert.deepEqual(await queryComics({ ...parseLibraryHash(), page: 5 }), {

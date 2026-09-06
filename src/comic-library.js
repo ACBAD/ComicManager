@@ -84,6 +84,7 @@ export async function queryComics(filters, signal) {
     "/comics/query",
     {
       ...rest,
+      order: "DESC",
       title: title || null,
       author_name: author_name || null,
       offset: (page - 1) * rest.limit,

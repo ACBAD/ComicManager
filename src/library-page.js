@@ -8,7 +8,7 @@ import {
   searchLibraryTags,
   documentPages,
   pageImageUrl,
-} from "./comic-library.js";
+} from "./comic-library.js?v=id-desc-1";
 
 export function createLibraryPage({
   el,

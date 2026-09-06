@@ -32,7 +32,7 @@ import {
   readEntryCompletion,
   filterPending,
 } from "./pending-comics.js?v=anchor-queue-1";
-import { createLibraryPage } from "./library-page.js?v=anchor-queue-1";
+import { createLibraryPage } from "./library-page.js?v=id-desc-1";
 import { createComicReader } from "./comic-reader.js?v=full-preload-1";
 import { libraryReturn } from "./comic-library.js";
 import { runBatchEntry } from "./batch-entry.js?v=anchor-queue-1";
